@@ -191,8 +191,23 @@ Metrics are used by the overview and analytics UI.
 
 Current limitation:
 
-- Real M7 acceptance still requires a deployed staging environment with separate Supabase, Redis, Google OAuth, Pub/Sub, Gmail test inbox, worker, scheduler, Gemini, and error-tracking credentials.
+- M7 is intentionally marked partial for the current free-hosting path. Real acceptance still requires a deployed staging environment with separate Supabase, Redis, Google OAuth, Pub/Sub, Gmail test inbox, worker, scheduler, Gemini, and error-tracking credentials.
 
+
+## M8 Agent Productivity Backend
+
+- Agents can save organization-scoped ticket views with user-scoped filters.
+- Saved view filters are sanitized so deleted, unsupported, or changed filters fail gracefully instead of breaking queue loading.
+- Ticket bulk actions support assign, status change, mark spam, resolve, and safe triage retry with per-ticket success or failure results.
+- Destructive bulk actions require explicit confirmation and write audit entries for successful items.
+- Workspace response templates support category tags, search, version metadata, owner/admin editing, and insertion into normal editable reply suggestions.
+- Template insertion does not approve a reply or bypass the existing approval and Gmail draft workflow.
+- Internal notes are stored separately from customer-visible reply suggestions, include edit history, support active-member email mentions, and write ticket/audit events.
+- Collaboration locks can warn/block concurrent reply edits so one agent cannot silently overwrite another active editor.
+
+Current limitation:
+
+- M8 frontend controls are not part of this backend-first pass. The APIs are ready for ticket queue and detail UI wiring.
 ## Local Development
 
 Current local links:
@@ -201,5 +216,4 @@ Current local links:
 - Backend health: `http://localhost:8001/health`
 
 Current local mode uses manual server processes. Docker is available for API, Redis, and worker testing, but it is not required for everyday frontend/backend debugging.
-
 

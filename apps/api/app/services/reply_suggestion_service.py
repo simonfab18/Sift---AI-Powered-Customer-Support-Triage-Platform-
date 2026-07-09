@@ -19,6 +19,7 @@ from app.models.reply_suggestion import (
 from app.models.ticket import TicketStatus
 from app.schemas.reply_suggestion import ReplySuggestionCreate, ReplySuggestionUpdate
 from app.services.audit_log_service import create_audit_log
+from app.services.collaboration_lock_service import ensure_resource_not_locked_by_other
 from app.services.gmail_token_service import refresh_connection_access_token
 from app.services.pilot_control_service import ensure_draft_creation_enabled
 from app.services.ticket_service import get_ticket_or_404, write_ticket_event
@@ -79,6 +80,7 @@ def update_reply_suggestion(
     payload: ReplySuggestionUpdate,
 ) -> ReplySuggestion:
     suggestion = get_reply_suggestion_or_404(db, organization_id, suggestion_id)
+    ensure_resource_not_locked_by_other(db, organization_id, actor, "reply_suggestion", suggestion_id)
     ticket = get_ticket_or_404(db, organization_id, suggestion.ticket_id, actor)
     if suggestion.status in {ReplySuggestionStatus.APPROVED.value, ReplySuggestionStatus.REJECTED.value, ReplySuggestionStatus.DRAFT_CREATED.value}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reply suggestion is already finalized")
@@ -280,4 +282,7 @@ def get_reply_suggestion_or_404(db: Session, organization_id: str, suggestion_id
     if suggestion is None or suggestion.organization_id != organization_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reply suggestion not found")
     return suggestion
+
+
+
 

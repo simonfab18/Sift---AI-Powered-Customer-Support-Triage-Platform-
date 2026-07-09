@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query, status
 
 from app.api.deps import CurrentUser, DbSession
+from app.schemas.bulk_action import TicketBulkActionRequest, TicketBulkActionResponse
 from app.schemas.ticket import (
     TicketAssign,
     TicketCreate,
@@ -9,6 +10,7 @@ from app.schemas.ticket import (
     TicketRead,
     TicketUpdate,
 )
+from app.services.bulk_action_service import run_ticket_bulk_action
 from app.services.ticket_service import (
     assign_ticket,
     create_ticket,
@@ -34,6 +36,16 @@ def read_tickets(
     offset: int = Query(default=0, ge=0),
 ):
     return list_tickets(db, organization_id, current_user, status_filter, priority_filter, limit, offset)
+
+
+@router.post("/bulk-actions", response_model=TicketBulkActionResponse)
+def run_org_ticket_bulk_action(
+    organization_id: str,
+    payload: TicketBulkActionRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    return run_ticket_bulk_action(db, organization_id, current_user, payload)
 
 
 @router.post("", response_model=TicketRead, status_code=status.HTTP_201_CREATED)

@@ -4,7 +4,7 @@
 
 The project is past the initial MVP foundation. The app now has a Next.js frontend, FastAPI backend, Supabase-backed PostgreSQL database, Supabase Auth, Gmail OAuth, Gmail import, AI triage with Gemini, reply approvals, Gmail draft creation, dashboard views, role-aware navigation, and local development servers.
 
-M7 staging and pilot release is in progress locally. The repo now has pilot controls and a mocked backend release smoke suite, but M7 is not complete until the full Gmail-to-draft flow passes in a real production-like staging environment.
+M7 staging and pilot release is partially complete locally. The repo has pilot controls and a mocked backend release smoke suite, but free hosting defers the always-on worker and scheduler acceptance items until a production-like staging environment is available.
 
 ## Completed Milestones
 
@@ -156,11 +156,24 @@ Local implementation added:
 - Enforced pilot controls in OAuth start, Gmail import/sync/history queueing, watch registration/renewal, auto-triage queueing, and Gmail draft creation.
 - Added a mocked backend release smoke test for the Gmail-to-draft path, including disconnect, reconnect, audit, resolve, and stale fallback detection.
 
-Still required before M7 can be called complete:
+Deferred before M7 can be called complete:
 
 - Deploy API, worker, scheduler, Redis, database, frontend, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and error tracking in separate staging resources.
 - Run the complete release suite against deployed staging without local services.
 - Verify worker/scheduler behavior, alerts, backup/restore, rollback, and a staging soak test.
+### Production M8: Agent Productivity Features
+
+Backend implementation added:
+
+- Added user-scoped saved ticket views with graceful filter sanitization.
+- Added ticket bulk actions for assign, status change, mark spam, resolve, and safe triage retry with per-item success/failure results.
+- Added workspace-owned response templates with category tags, search, version metadata, owner/admin management, and insertion into editable reply suggestions.
+- Added internal notes with mention tracking, edit history, audit behavior, and separation from customer-visible Gmail drafts.
+- Added collaboration locks for reply edit conflict protection.
+
+Still required for a complete product pass:
+
+- Wire saved views, bulk action controls, templates, notes, mentions, and lock warnings into the frontend ticket queue/detail UI.
 ### Product UI Pass
 
 - Added modern SaaS-style landing page.
@@ -169,31 +182,29 @@ Still required before M7 can be called complete:
 - Added responsive layout direction.
 - Added reusable product UI components for badges, cards, queue rows, and app navigation.
 
-## Current Production Milestone: M7 Staging and Pilot Release
+## Current Production Milestone: M8 Agent Productivity Features
 
 ### Goal
 
-The complete Gmail-to-draft workflow should be proven in a production-like staging environment before a real pilot inbox is connected.
+Agent queue handling should become faster and safer through saved views, bulk actions, templates, internal collaboration, and edit-conflict protection.
 
-### Recommended Production Design
+### Current M7 Deferred Items
 
-- Use separate staging infrastructure for database, Redis, deployed API/worker, Google OAuth, Pub/Sub, Gmail test inbox, and Gemini.
-- Run the full Gmail notification-to-draft workflow outside local services.
-- Add an E2E release suite covering workspace creation, Gmail connection, sync, triage, approval, draft creation, audit, disconnect, reconnect, and missed-notification recovery.
-- Add pilot controls such as feature flags, allowlisted organizations, and kill switches for sync, triage, and draft creation.
+- Worker and scheduler verification is deferred while staying on free hosting.
+- Full M7 acceptance still requires production-like staging with API, worker, scheduler, Redis, database, frontend, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and error tracking.
 
 ### Backend Work
 
-- Configure staging services and environment variables.
-- Add and run E2E tests against staging-like dependencies.
-- Verify scheduler, worker, Redis, migrations, Pub/Sub, Gmail, Gemini, and rollback procedures.
-- Add pilot kill switches and allowlist controls where they are missing.
+- Complete M8 backend APIs and database models for saved views, bulk actions, response templates, internal notes, mentions, and collaboration locks.
+- Keep M7 worker/scheduler verification deferred until paid or production-like hosting is available.
 
 ### Frontend Work
 
-- Add staging-facing UI checks for Gmail connect, sync health, triage, approval, draft creation, disconnect, and reconnect.
-- Ensure pilot controls are visible to owner/admin users.
-- Confirm no mock/demo data appears in production-like dashboards.
+- Add ticket queue saved-view controls.
+- Add multi-select and confirmation flows for bulk actions.
+- Add response template search/insert UI on ticket detail.
+- Add internal notes and visible mention/edit history surfaces.
+- Add edit-lock warnings for reply editing.
 ## Later Milestones
 
 ### Knowledge and Automation

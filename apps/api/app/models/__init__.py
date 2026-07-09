@@ -1,4 +1,4 @@
-﻿from app.models.ai_triage_result import AITriageResult
+from app.models.ai_triage_result import AITriageResult
 from app.models.audit_log import AuditLog
 from app.models.customer import Customer
 from app.models.gmail_connection import GmailConnection
@@ -11,8 +11,12 @@ from app.models.member import OrganizationMember
 from app.models.organization import Organization
 from app.models.reply_approval import ReplyApproval
 from app.models.reply_suggestion import ReplySuggestion
+from app.models.response_template import ResponseTemplate
 from app.models.ticket import Ticket
+from app.models.ticket_collaboration_lock import TicketCollaborationLock
 from app.models.ticket_event import TicketEvent
+from app.models.ticket_internal_note import TicketInternalNote, TicketInternalNoteEdit, TicketInternalNoteMention
+from app.models.ticket_saved_view import TicketSavedView
 from app.models.workspace_settings import WorkspaceSettings
 
 __all__ = [
@@ -29,7 +33,13 @@ __all__ = [
     "OrganizationMember",
     "ReplyApproval",
     "ReplySuggestion",
+    "ResponseTemplate",
     "Ticket",
+    "TicketCollaborationLock",
     "TicketEvent",
+    "TicketInternalNote",
+    "TicketInternalNoteEdit",
+    "TicketInternalNoteMention",
+    "TicketSavedView",
     "WorkspaceSettings",
 ]
