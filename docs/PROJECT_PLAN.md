@@ -171,9 +171,13 @@ Backend implementation added:
 - Added internal notes with mention tracking, edit history, audit behavior, and separation from customer-visible Gmail drafts.
 - Added collaboration locks for reply edit conflict protection.
 
-Still required for a complete product pass:
+Frontend implementation added:
 
-- Wire saved views, bulk action controls, templates, notes, mentions, and lock warnings into the frontend ticket queue/detail UI.
+- Wired saved views, bulk action controls, response templates, internal notes, note edit history, and edit-lock warnings into the frontend ticket queue/detail UI.
+
+Still required for full acceptance:
+
+- Verify M8 workflows in staging with deployed backend credentials and representative multi-user sessions.
 ### Product UI Pass
 
 - Added modern SaaS-style landing page.
@@ -200,11 +204,12 @@ Agent queue handling should become faster and safer through saved views, bulk ac
 
 ### Frontend Work
 
-- Add ticket queue saved-view controls.
-- Add multi-select and confirmation flows for bulk actions.
-- Add response template search/insert UI on ticket detail.
-- Add internal notes and visible mention/edit history surfaces.
-- Add edit-lock warnings for reply editing.
+- Complete ticket queue saved-view controls.
+- Complete multi-select and confirmation flows for bulk actions.
+- Complete response template search/insert UI on ticket detail.
+- Complete internal notes and visible edit-history surfaces.
+- Complete edit-lock warnings for reply editing.
+- Staging validation remains required for real multi-user lock behavior and deployed credential flows.
 ## Later Milestones
 
 ### Knowledge and Automation

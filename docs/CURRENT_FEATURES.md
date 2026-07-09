@@ -194,7 +194,7 @@ Current limitation:
 - M7 is intentionally marked partial for the current free-hosting path. Real acceptance still requires a deployed staging environment with separate Supabase, Redis, Google OAuth, Pub/Sub, Gmail test inbox, worker, scheduler, Gemini, and error-tracking credentials.
 
 
-## M8 Agent Productivity Backend
+## M8 Agent Productivity Features
 
 - Agents can save organization-scoped ticket views with user-scoped filters.
 - Saved view filters are sanitized so deleted, unsupported, or changed filters fail gracefully instead of breaking queue loading.
@@ -204,10 +204,12 @@ Current limitation:
 - Template insertion does not approve a reply or bypass the existing approval and Gmail draft workflow.
 - Internal notes are stored separately from customer-visible reply suggestions, include edit history, support active-member email mentions, and write ticket/audit events.
 - Collaboration locks can warn/block concurrent reply edits so one agent cannot silently overwrite another active editor.
+- The ticket queue UI supports saved views, multi-select, and bulk action flows for status updates, assignment, spam marking, resolving, and safe triage retry.
+- The ticket detail UI supports response template search/insertion, internal notes, note edit history, and visible reply edit-lock warnings.
 
 Current limitation:
 
-- M8 frontend controls are not part of this backend-first pass. The APIs are ready for ticket queue and detail UI wiring.
+- Real multi-agent lock behavior and end-to-end saved-view/bulk-action workflows still need staging verification with deployed credentials and representative users.
 ## Local Development
 
 Current local links:

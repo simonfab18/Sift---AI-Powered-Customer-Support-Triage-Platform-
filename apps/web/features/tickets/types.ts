@@ -10,6 +10,8 @@ export type TicketListItem = {
   priority: string;
   sentiment: string;
   assigned_to_user_id: string | null;
+  triage_status: string;
+  triage_error_message: string | null;
   received_at: string;
   updated_at: string;
 };
@@ -24,6 +26,10 @@ export type Ticket = TicketListItem & {
   };
   message_text: string;
   message_html: string | null;
+  active_triage_job_id: string | null;
+  triage_attempts: number;
+  last_triage_started_at: string | null;
+  last_triage_completed_at: string | null;
   created_at: string;
 };
 
@@ -63,6 +69,8 @@ export type ReplySuggestion = {
   body: string;
   edited_body: string | null;
   status: "suggested" | "edited" | "approved" | "rejected" | "draft_created" | string;
+  reply_version: number;
+  approved_reply_version: number | null;
   created_by: "ai" | "agent" | string;
   created_by_user_id: string | null;
   approved_by_user_id: string | null;
@@ -99,4 +107,90 @@ export type MetricsOverview = {
   draft_created_tickets: number;
   by_status: Record<string, number>;
   by_priority: Record<string, number>;
+};
+
+export type SavedView = {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  name: string;
+  filters: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BulkActionResult = {
+  ticket_id: string;
+  success: boolean;
+  ticket: Ticket | null;
+  error: string | null;
+};
+
+export type BulkActionResponse = {
+  action: string;
+  results: BulkActionResult[];
+};
+
+export type ResponseTemplate = {
+  id: string;
+  organization_id: string;
+  name: string;
+  body: string;
+  category_tags: string[];
+  created_by_user_id: string;
+  updated_by_user_id: string | null;
+  version: number;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TemplateInsertResult = {
+  template: ResponseTemplate;
+  suggestion: ReplySuggestion;
+};
+
+export type InternalNote = {
+  id: string;
+  organization_id: string;
+  ticket_id: string;
+  body: string;
+  created_by_user_id: string;
+  updated_by_user_id: string | null;
+  version: number;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InternalNoteEdit = {
+  id: string;
+  organization_id: string;
+  note_id: string;
+  edited_by_user_id: string;
+  previous_body: string;
+  new_body: string;
+  version: number;
+  created_at: string;
+};
+
+export type InternalNoteMention = {
+  id: string;
+  organization_id: string;
+  note_id: string;
+  mentioned_user_id: string;
+  created_at: string;
+};
+
+export type CollaborationLock = {
+  id: string;
+  organization_id: string;
+  ticket_id: string;
+  resource_type: string;
+  resource_id: string;
+  locked_by_user_id: string;
+  mode: string;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
 };
