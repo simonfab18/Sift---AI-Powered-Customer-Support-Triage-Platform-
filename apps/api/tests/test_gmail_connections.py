@@ -58,6 +58,7 @@ def test_oauth_callback_creates_connection_with_encrypted_refresh_token(
     monkeypatch.setattr(settings, "google_client_id", "google-client-id")
     monkeypatch.setattr(settings, "google_client_secret", "google-client-secret")
     monkeypatch.setattr(settings, "google_redirect_uri", "http://localhost:8000/v1/gmail/oauth/callback")
+    monkeypatch.setattr(settings, "frontend_origin", "https://app.example.com")
     monkeypatch.setattr(settings, "encryption_key", "test-encryption-key")
 
     async def fake_exchange_oauth_code(code: str):
@@ -84,10 +85,15 @@ def test_oauth_callback_creates_connection_with_encrypted_refresh_token(
 
     start_response = client.get(f"/v1/orgs/{organization['id']}/gmail/oauth/start")
     state = start_response.json()["state"]
-    callback_response = client.get(f"/v1/gmail/oauth/callback?state={state}&code=callback-code")
+    callback_response = client.get(
+        f"/v1/gmail/oauth/callback?state={state}&code=callback-code",
+        follow_redirects=False,
+    )
 
-    assert callback_response.status_code == 200
-    assert callback_response.json()["gmail_email"] == "support@example.com"
+    assert callback_response.status_code == 303
+    assert callback_response.headers["location"].startswith(
+        "https://app.example.com/dashboard/settings/gmail?gmail=connected&connection_id="
+    )
 
     with client.session_factory() as db:
         connection = db.scalar(select(GmailConnection))
@@ -189,3 +195,4 @@ def test_agent_cannot_revoke_gmail_connection(client: TestClient, create_org) ->
     response = client.delete(f"/v1/orgs/{organization['id']}/gmail/connections/{connection_id}")
 
     assert response.status_code == 403
+

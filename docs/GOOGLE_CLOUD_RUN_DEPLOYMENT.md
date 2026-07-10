@@ -7,7 +7,7 @@ This guide covers the new backend architecture:
 - Vercel frontend unchanged.
 - Google Pub/Sub task topics instead of Redis/Celery.
 - Cloud Scheduler for periodic fallback sync and watch-renewal scans.
-- Render remains online as fallback until Cloud Run staging is verified.
+- Render may remain online as fallback, but staging verification now targets Cloud Run.
 
 ## Fixed project choices
 
@@ -25,18 +25,18 @@ C:\Users\stanl\AppData\Local\Google\Cloud SDK
 ## Staging resource names
 
 ```text
-Cloud Run service: support-triage-api-staging
+Cloud Run service: sift-api-staging
 Task Pub/Sub topics:
   support-triage-staging-gmail-import
   support-triage-staging-gmail-history-sync
   support-triage-staging-ai-triage
   support-triage-staging-watch-renewal
 Service accounts:
-  support-triage-staging-pubsub-invoker
-  support-triage-staging-scheduler-invoker
+  sift-pubsub-push-staging
+  sift-scheduler-staging
 Cloud Scheduler jobs:
-  support-triage-staging-fallback-sync
-  support-triage-staging-watch-renewals
+  sift-staging-fallback-sync
+  sift-staging-watch-renewals
 ```
 
 Production should use the same names with `prod` instead of `staging`.
@@ -56,10 +56,10 @@ TASK_PUBSUB_GMAIL_HISTORY_SYNC_TOPIC=support-triage-staging-gmail-history-sync
 TASK_PUBSUB_AI_TRIAGE_TOPIC=support-triage-staging-ai-triage
 TASK_PUBSUB_WATCH_RENEWAL_TOPIC=support-triage-staging-watch-renewal
 TASK_OIDC_EXPECTED_AUDIENCE=https://<cloud-run-api-url>
-TASK_PUBSUB_SERVICE_ACCOUNT_EMAIL=support-triage-staging-pubsub-invoker@customer-support-triage-501408.iam.gserviceaccount.com
-SCHEDULER_SERVICE_ACCOUNT_EMAIL=support-triage-staging-scheduler-invoker@customer-support-triage-501408.iam.gserviceaccount.com
-PUBSUB_EXPECTED_AUDIENCE=https://<cloud-run-api-url>/v1/webhooks/google/gmail
-PUBSUB_SERVICE_ACCOUNT_EMAIL=pub-sub-push-invoker@customer-support-triage-501408.iam.gserviceaccount.com
+TASK_PUBSUB_SERVICE_ACCOUNT_EMAIL=sift-pubsub-push-staging@customer-support-triage-501408.iam.gserviceaccount.com
+SCHEDULER_SERVICE_ACCOUNT_EMAIL=sift-scheduler-staging@customer-support-triage-501408.iam.gserviceaccount.com
+PUBSUB_EXPECTED_AUDIENCE=https://<cloud-run-api-url>
+PUBSUB_SERVICE_ACCOUNT_EMAIL=sift-pubsub-push-staging@customer-support-triage-501408.iam.gserviceaccount.com
 GOOGLE_REDIRECT_URI=https://<cloud-run-api-url>/v1/gmail/oauth/callback
 ```
 
@@ -106,7 +106,7 @@ The subscription must use OIDC authentication with the expected service account 
 7. Update the Gmail Pub/Sub push subscription to the Cloud Run webhook URL.
 8. Update Vercel `NEXT_PUBLIC_API_BASE_URL` to the Cloud Run API URL.
 9. Run staging smoke verification.
-10. Keep Render online until the smoke suite passes.
+10. Keep Render only as an optional fallback after the Cloud Run smoke suite passes.
 
 ## Staging smoke verification
 
@@ -124,4 +124,4 @@ Verify:
 - Cloud Scheduler fallback sync and watch-renewal routes dispatch due work.
 - Pilot kill switches still pause sync, auto-triage, and draft creation.
 
-Do not mark M7 complete until these checks pass against deployed staging credentials.
+M7 staging is considered verified for the core Gmail connect/sync path after these checks pass. Remaining production-pilot gaps should be tracked separately, especially Gemini quota, error tracking, backup/restore, rollback, and soak testing.

@@ -1,14 +1,17 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from urllib.parse import urlencode
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.rate_limits import limit_gmail_sync, limit_gmail_watch, oauth_callback_rate_limit, oauth_start_rate_limit
+from app.core.config import settings
 from app.models.gmail_sync_event import GmailSyncEvent
 from app.models.member import MemberRole
 from app.schemas.gmail import (
     GmailConnectionRead,
     GmailHistorySyncQueueRead,
-    GmailOAuthCallbackRead,
     GmailOAuthStartRead,
     GmailSyncEventRead,
     GmailSyncStatusRead,
@@ -41,7 +44,15 @@ def start_oauth(organization_id: str, db: DbSession, current_user: CurrentUser):
     return GmailOAuthStartRead(auth_url=auth_url, state=state)
 
 
-@router.get("/gmail/oauth/callback", response_model=GmailOAuthCallbackRead, dependencies=[Depends(oauth_callback_rate_limit)])
+def _gmail_oauth_success_url(connection_id: str) -> str | None:
+    if not settings.frontend_origin:
+        return None
+
+    query = urlencode({"gmail": "connected", "connection_id": connection_id})
+    return f"{settings.frontend_origin.rstrip('/')}/dashboard/settings/gmail?{query}"
+
+
+@router.get("/gmail/oauth/callback", dependencies=[Depends(oauth_callback_rate_limit)])
 async def oauth_callback(state: str, code: str, request: Request, db: DbSession):
     connection = await complete_gmail_oauth(
         db,
@@ -50,11 +61,15 @@ async def oauth_callback(state: str, code: str, request: Request, db: DbSession)
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    return GmailOAuthCallbackRead(
-        connection_id=connection.id,
-        gmail_email=connection.gmail_email,
-        status=connection.status,
-    )
+    redirect_url = _gmail_oauth_success_url(connection.id)
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+
+    return {
+        "connection_id": connection.id,
+        "gmail_email": connection.gmail_email,
+        "status": connection.status,
+    }
 
 
 @router.get(
@@ -188,3 +203,4 @@ def patch_import_rule(
     current_user: CurrentUser,
 ):
     return update_import_rule(db, organization_id, rule_id, current_user, payload)
+

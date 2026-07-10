@@ -4,7 +4,7 @@
 
 The project is past the initial MVP foundation. The app now has a Next.js frontend, FastAPI backend, Supabase-backed PostgreSQL database, Supabase Auth, Gmail OAuth, Gmail import, AI triage with Gemini, reply approvals, Gmail draft creation, dashboard views, role-aware navigation, and local development servers.
 
-M7 staging and pilot release is partially complete locally. The repo has pilot controls, a mocked backend release smoke suite, and a new Google Cloud Run/Pub/Sub task architecture that removes Redis/Celery from staging and production. M7 remains partial until Cloud Run staging is deployed and verified end to end.
+M7 staging and pilot release is verified for the core Cloud Run staging path. The repo has pilot controls, a mocked backend release smoke suite, and a Google Cloud Run/Pub/Sub task architecture that removes Redis/Celery from staging and production. Remaining M7 gaps are Gemini free-tier quota during testing, missing external error tracking, and final Vercel redeploy of the Gmail success-banner polish.
 
 ## Completed Milestones
 
@@ -156,11 +156,17 @@ Local implementation added:
 - Enforced pilot controls in OAuth start, Gmail import/sync/history queueing, watch registration/renewal, auto-triage queueing, and Gmail draft creation.
 - Added a mocked backend release smoke test for the Gmail-to-draft path, including disconnect, reconnect, audit, resolve, and stale fallback detection.
 
-Deferred before M7 can be called complete:
+Staging verification completed:
 
-- Deploy Cloud Run API/task routes, Cloud Scheduler, Supabase database/auth, Vercel frontend, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and error tracking with separated staging configuration.
-- Run the complete release suite against deployed staging without local services.
-- Verify Pub/Sub task delivery, Cloud Scheduler behavior, alerts, backup/restore, rollback, and a staging soak test.
+- Deployed Cloud Run API/task routes with Supabase database/auth, Vercel frontend configuration, Google OAuth, Pub/Sub push subscriptions, Gmail test inbox flow, and Cloud Scheduler jobs.
+- Verified Cloud Run health, Supabase migrations, Gmail OAuth connect, Gmail sync/import, Gmail Pub/Sub webhook routing, and request-based Pub/Sub task subscriptions.
+- Added scheduler jobs for fallback sync and watch-renewal scans using Google OIDC authentication.
+
+Remaining M7 limitations before a real production pilot:
+
+- Gemini is configured but staging testing can hit the free-tier quota; quota/billing should be resolved before pilot usage.
+- External error tracking is still absent because no DSN/provider was supplied.
+- Backup/restore, rollback drill, and longer staging soak test remain production-readiness exercises.
 ### Production M8: Agent Productivity Features
 
 Backend implementation added:
@@ -191,32 +197,29 @@ Still required for full acceptance:
 - Replaced deployed Redis/Celery assumptions with Google Pub/Sub task dispatch and request-based Cloud Run task handlers.
 - Added OIDC-protected task endpoints for Gmail import, Gmail history sync, AI triage, Gmail watch renewal, fallback sync, and watch-renewal scheduling.
 - Kept Supabase database/auth and Vercel frontend unchanged.
-- Render remains a fallback until Cloud Run staging is verified.
+- Render may remain available as fallback, but the verified staging baseline now uses Cloud Run, Pub/Sub, Cloud Scheduler, Vercel, and Supabase.
 
-## Current Production Milestone: M8 Agent Productivity Features
+## Current Production Milestone: M9 Knowledge and Routing
 
 ### Goal
 
-Agent queue handling should become faster and safer through saved views, bulk actions, templates, internal collaboration, and edit-conflict protection.
+Replies should become more accurate through workspace knowledge, and ticket ownership should become smarter through configurable routing rules and SLA visibility.
 
-### Current M7 Deferred Items
+### M7 Follow-Up Items
 
-- Redis/Celery worker verification is replaced by Cloud Run/Pub/Sub task verification.
-- Full M7 acceptance still requires production-like staging with Cloud Run API/task routes, Cloud Scheduler, Supabase database/auth, Vercel frontend, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and error tracking.
+- Add an external error-tracking DSN/provider if the acceptance item must be covered before a real pilot.
+- Resolve Gemini quota/billing before relying on repeated staging or pilot AI runs.
+- Run a backup/restore drill, rollback drill, and longer staging soak before production cutover.
 
 ### Backend Work
 
-- Complete M8 backend APIs and database models for saved views, bulk actions, response templates, internal notes, mentions, and collaboration locks.
-- Keep M7 Cloud Run/Pub/Sub/Scheduler verification deferred until the new staging deployment is live.
+- Implement M9 workspace knowledge models, retrieval services, routing rules, and SLA timers with organization isolation.
+- Keep knowledge retrieval scoped to organization-owned, active, effective knowledge only.
 
 ### Frontend Work
 
-- Complete ticket queue saved-view controls.
-- Complete multi-select and confirmation flows for bulk actions.
-- Complete response template search/insert UI on ticket detail.
-- Complete internal notes plus visible edit-history and mention surfaces.
-- Complete edit-lock warnings for reply editing.
-- Staging validation remains required for real multi-user lock behavior and deployed credential flows.
+- Add owner/admin knowledge management, routing rule management, and agent-visible source references on ticket/reply workflows.
+- Add SLA status visibility to inbox filters and dashboard surfaces.
 ## Later Milestones
 
 ### Knowledge and Automation
@@ -240,6 +243,8 @@ Agent queue handling should become faster and safer through saved views, bulk ac
 - Confirm staging and production environment variables.
 - Confirm deployed Google OAuth redirect URLs.
 - Confirm deployed CORS origins.
-- Confirm Cloud Run task routes, Pub/Sub push subscriptions, and Cloud Scheduler jobs are running; keep Render as fallback until verified.
+- Confirm Cloud Run task routes, Pub/Sub push subscriptions, and Cloud Scheduler jobs remain healthy after each staging deploy.
 - Run full end-to-end staging test.
+
+
 

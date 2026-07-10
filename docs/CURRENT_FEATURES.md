@@ -189,19 +189,30 @@ Metrics are used by the overview and analytics UI.
 - Gmail draft creation respects the draft-creation switch while preserving approved suggestions for later recovery.
 - A mocked backend release smoke test covers Gmail history sync, ticket creation, triage, approval, draft creation, resolve, audit, disconnect, reconnect, and fallback stale-connection detection.
 
-Current limitation:
+Staging verification status:
 
-- M7 is intentionally marked partial until the new Google Cloud Run staging environment is verified with separate staging configuration, Supabase, Google OAuth, Pub/Sub, Gmail test inbox, Cloud Scheduler, Gemini, and error-tracking credentials.
+- Cloud Run staging is deployed and serving the API.
+- Supabase staging migrations have been applied through the current Alembic head.
+- Vercel points at the Cloud Run API.
+- Gmail OAuth connect and Gmail sync/import have been verified with a connected Gmail inbox.
+- Gmail Pub/Sub notifications and task push subscriptions target Cloud Run with Google OIDC authentication.
+- Cloud Scheduler is enabled with fallback sync and watch-renewal jobs.
+
+Current limitations:
+
+- Gemini requests can hit free-tier quota during staging tests; failed triage attempts are visible and retryable.
+- Error tracking is not configured because no DSN/provider has been supplied.
+- The frontend Gmail success banner needs a Vercel redeploy to match the deployed backend redirect behavior.
 
 
 ## Google Cloud Run Task Architecture
 
 
-- Staging and production backend execution is moving from Render plus Redis/Celery to Google Cloud Run plus Google Pub/Sub task push handlers.
+- Staging and production backend execution has moved from Render plus Redis/Celery assumptions to Google Cloud Run plus Google Pub/Sub task push handlers.
 - The public API remains reachable for Vercel, Gmail OAuth callbacks, and Gmail webhook delivery. Normal app routes continue to use Supabase JWT authentication and organization/role authorization.
 - Internal task routes under `/v1/tasks/...` require Google service-account OIDC tokens with expected issuer, audience, and service-account email validation.
 - Gmail import, Gmail history sync, AI triage, Gmail watch renewal, fallback sync, and watch-renewal scheduler behavior reuse existing business services through request-based task runner functions.
-- Render remains available as a temporary fallback until Cloud Run staging verification is complete.
+- Render can remain available as a temporary fallback, but the verified staging baseline now uses Cloud Run, Pub/Sub, Cloud Scheduler, Vercel, and Supabase.
 
 ## M8 Agent Productivity Features
 
@@ -227,4 +238,5 @@ Current local links:
 - Backend health: `http://localhost:8001/health`
 
 Current local mode uses manual server processes. Staging/production async work now targets Google Pub/Sub and request-based Cloud Run task handlers instead of Redis/Celery workers.
+
 

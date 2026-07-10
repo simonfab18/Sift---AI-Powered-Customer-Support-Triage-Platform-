@@ -257,7 +257,7 @@ Recommended deployment:
 - Google Cloud Scheduler for fallback sync and watch-renewal scans.
 - Supabase for PostgreSQL and Auth.
 - Google Cloud Console for Gmail OAuth and Pub/Sub.
-- Render remains a fallback until Cloud Run staging is verified.
+- Render may remain available as fallback, but the verified staging baseline uses Cloud Run, Pub/Sub, Cloud Scheduler, Vercel, and Supabase.
 - Staging and production pilot controls through deployment env vars plus workspace settings.
 
 ## Current Local Runtime
@@ -272,10 +272,11 @@ Docker can run local development helpers, but staging and production do not requ
 
 ## Known Architecture Gaps
 
-- A real staging Gmail-to-draft release suite still must pass against deployed Cloud Run API/task routes, Supabase, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and Cloud Scheduler resources.
-- Production-grade Gmail push sync requires correctly configured Google Cloud Pub/Sub and authenticated push delivery in each environment.
-- Gmail watches must be renewed regularly once push sync is added.
-- Fallback sync exists, but staging must verify Cloud Scheduler, Pub/Sub task delivery, and missed-notification recovery outside local services.
+- Core staging Gmail connect/sync has been verified against Cloud Run, Supabase, Google OAuth, Pub/Sub, Gmail, and Cloud Scheduler resources.
+- Gemini is configured, but free-tier quota can block repeated staging triage tests until quota/billing is resolved.
+- External error tracking is not configured until a DSN/provider is supplied.
+- Backup/restore, rollback, and longer soak tests remain required before a real production pilot.
 - Exposed development secrets should be rotated before a real production pilot.
+
 
 
