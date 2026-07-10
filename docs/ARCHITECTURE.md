@@ -157,7 +157,7 @@ sequenceDiagram
     API-->>Web: Import summary
 ```
 
-Current behavior supports manual import, authenticated Gmail push notifications through Google Cloud Pub/Sub, Pub/Sub-dispatched Gmail history sync, and Cloud Scheduler-triggered fallback sync discovery. M7 pilot controls can pause sync/watch behavior globally or per workspace without deleting connected Gmail data.
+Current behavior supports manual import, authenticated Gmail push notifications through Google Cloud Pub/Sub, Pub/Sub-dispatched Gmail history sync, and Cloud Scheduler-triggered fallback sync discovery. New tickets created manually or through Gmail import initialize SLA due dates and run active organization routing rules. M7 pilot controls can pause sync/watch behavior globally or per workspace without deleting connected Gmail data.
 
 ## AI Triage Flow
 
@@ -172,10 +172,11 @@ sequenceDiagram
     Agent->>Web: Run triage
     Web->>API: POST triage ticket
     API->>DB: Load ticket
-    API->>Gemini: Send structured prompt
+    API->>DB: Retrieve active workspace knowledge
+    API->>Gemini: Send structured prompt with matched sources when available
     Gemini-->>API: Structured triage output
     API->>API: Validate with Pydantic
-    API->>DB: Save AI triage result
+    API->>DB: Save AI triage result and source references
     API->>DB: Update ticket fields
     API->>DB: Create reply suggestion
     API-->>Web: Triage result
@@ -216,6 +217,10 @@ Key endpoint groups:
 - `POST /v1/organizations`
 - `GET /v1/organizations/{organization_id}`
 - `GET /v1/orgs/{organization_id}/members`
+- `GET|POST /v1/orgs/{organization_id}/knowledge`
+- `GET /v1/orgs/{organization_id}/knowledge/search`
+- `GET|POST /v1/orgs/{organization_id}/routing-rules`
+- `POST /v1/orgs/{organization_id}/routing-rules/{rule_id}/test`
 - `POST /v1/orgs/{organization_id}/members/invite`
 - `PATCH /v1/orgs/{organization_id}/members/{member_id}`
 - `DELETE /v1/orgs/{organization_id}/members/{member_id}`
@@ -277,6 +282,7 @@ Docker can run local development helpers, but staging and production do not requ
 - External error tracking is not configured until a DSN/provider is supplied.
 - Backup/restore, rollback, and longer soak tests remain required before a real production pilot.
 - Exposed development secrets should be rotated before a real production pilot.
+
 
 
 

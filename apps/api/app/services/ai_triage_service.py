@@ -13,6 +13,7 @@ from app.models.job_run import JobRun
 from app.models.reply_approval import ReplyApproval
 from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketStatus, TicketTriageStatus
 from app.schemas.ai import TriageOutput
+from app.services.knowledge_service import record_knowledge_usage, retrieve_knowledge_sources
 from app.services.operations_service import ensure_job_defaults, mark_job_failed, mark_job_running, mark_job_succeeded
 from app.services.pilot_control_service import ensure_organization_pilot_allowed
 from app.services.reply_suggestion_service import create_ai_reply_suggestion_from_triage
@@ -100,11 +101,18 @@ async def _execute_ticket_triage(
         ticket.active_triage_job_id = job.id
     db.commit()
 
+    retrieved_knowledge = retrieve_knowledge_sources(
+        db,
+        ticket.organization_id,
+        f"{ticket.subject} {ticket.message_text}",
+    )
+    knowledge_references = [item.as_reference() for item in retrieved_knowledge]
     prompt = build_triage_prompt(
         customer_name=ticket.customer.name,
         customer_email=ticket.customer.email,
         subject=ticket.subject,
         message=ticket.message_text,
+        knowledge_sources=knowledge_references,
     )
     timer = perf_counter()
     try:
@@ -133,7 +141,7 @@ async def _execute_ticket_triage(
             schema_version=SCHEMA_VERSION,
             latency_ms=latency_ms,
             job_run_id=job.id if job is not None else None,
-            raw_input={"prompt": prompt, "prompt_version": PROMPT_VERSION, "schema_version": SCHEMA_VERSION},
+            raw_input={"prompt": prompt, "prompt_version": PROMPT_VERSION, "schema_version": SCHEMA_VERSION, "knowledge_sources": knowledge_references},
             raw_output=raw_output,
             validated_output=validated_output,
             category=output.category.value,
@@ -146,9 +154,11 @@ async def _execute_ticket_triage(
             reasoning=output.reasoning,
             requires_human_review=requires_human_review,
             validation_status="valid",
+            knowledge_sources=knowledge_references,
         )
         db.add(result)
         db.flush()
+        record_knowledge_usage(db, ticket.id, result.id, PROMPT_VERSION, retrieved_knowledge)
         create_ai_reply_suggestion_from_triage(db, ticket.id, result, ticket.gmail_connection_id)
         db.add(
             ReplyApproval(
@@ -188,6 +198,7 @@ async def _execute_ticket_triage(
                 "category": result.category,
                 "requires_human_review": result.requires_human_review,
                 "confidence_score": result.confidence_score,
+                "knowledge_source_ids": [source["id"] for source in knowledge_references],
             },
         )
         db.commit()
@@ -256,4 +267,5 @@ def list_ticket_triage_results(
             .order_by(AITriageResult.created_at.desc())
         )
     )
+
 

@@ -37,4 +37,6 @@ class AITriageResult(Base):
     reasoning: Mapped[str] = mapped_column(Text, default="", nullable=False)
     requires_human_review: Mapped[bool] = mapped_column(Boolean, nullable=False)
     validation_status: Mapped[str] = mapped_column(String(20), nullable=False, default="valid")
+    knowledge_sources: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, JSON, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -22,5 +22,11 @@ class WorkspaceSettings(Base):
     sync_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     draft_creation_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     pilot_feedback_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    business_timezone: Mapped[str] = mapped_column(String(80), nullable=False, default="UTC")
+    business_hours: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    first_review_target_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=240)
+    resolution_target_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=1440)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+

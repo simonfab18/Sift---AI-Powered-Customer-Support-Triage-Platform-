@@ -90,6 +90,9 @@ class Ticket(Base):
     triage_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_triage_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_triage_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_review_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    resolution_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    sla_status: Mapped[str] = mapped_column(String(30), nullable=False, default="on_track", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
@@ -99,3 +102,5 @@ class Ticket(Base):
         back_populates="ticket",
         cascade="all, delete-orphan",
     )
+
+

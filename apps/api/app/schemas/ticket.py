@@ -63,6 +63,9 @@ class TicketRead(BaseModel):
     triage_attempts: int
     last_triage_started_at: datetime | None = None
     last_triage_completed_at: datetime | None = None
+    first_review_due_at: datetime | None = None
+    resolution_due_at: datetime | None = None
+    sla_status: str
     created_at: datetime
     updated_at: datetime
 
@@ -81,6 +84,9 @@ class TicketListItem(BaseModel):
     assigned_to_user_id: str | None = None
     triage_status: str
     triage_error_message: str | None = None
+    first_review_due_at: datetime | None = None
+    resolution_due_at: datetime | None = None
+    sla_status: str
     received_at: datetime
     updated_at: datetime
 
@@ -95,3 +101,4 @@ class TicketEventRead(BaseModel):
     event_type: str
     event_metadata: dict
     created_at: datetime
+

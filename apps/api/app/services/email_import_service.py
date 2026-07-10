@@ -15,6 +15,9 @@ from app.services.gmail_token_service import refresh_connection_access_token
 from app.services.operations_service import ensure_job_defaults, mark_job_failed, mark_job_running, mark_job_succeeded
 from app.services.pilot_control_service import ensure_sync_enabled
 from app.services.rbac_service import require_membership
+from app.services.routing_rule_service import apply_routing_rules
+from app.services.sla_service import initialize_ticket_sla
+from app.services.workspace_settings_service import get_or_create_workspace_settings
 from app.services.ticket_service import get_or_create_customer, write_ticket_event
 
 
@@ -79,6 +82,9 @@ def _create_ticket_from_gmail(
     )
     db.add(ticket)
     db.flush()
+    settings = get_or_create_workspace_settings(db, organization_id)
+    initialize_ticket_sla(ticket, settings)
+    apply_routing_rules(db, ticket)
     write_ticket_event(
         db,
         ticket,
@@ -275,3 +281,4 @@ def get_job_run(db: Session, organization_id: str, job_id: str, actor: Authentic
     if job is None or job.organization_id != organization_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job run not found")
     return job
+

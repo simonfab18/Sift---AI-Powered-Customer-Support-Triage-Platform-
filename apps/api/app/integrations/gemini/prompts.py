@@ -41,8 +41,17 @@ def build_triage_prompt(
     customer_email: str,
     subject: str,
     message: str,
+    knowledge_sources: list[dict] | None = None,
 ) -> str:
     display_name = customer_name or customer_email
+    knowledge_block = ""
+    if knowledge_sources:
+        formatted_sources = []
+        for index, source in enumerate(knowledge_sources, start=1):
+            formatted_sources.append(
+                f"[{index}] {source['title']} ({source['source_type']}): {source['excerpt']}"
+            )
+        knowledge_block = "\\nWorkspace knowledge sources. Use only these sources for company-specific facts; if none apply, say what information is missing internally.\\n" + "\\n".join(formatted_sources) + "\\n"
     return f"""You are an AI customer support triage assistant for an e-commerce company.
 
 Analyze the customer email and return only JSON matching the provided schema.
@@ -51,7 +60,7 @@ Customer: {display_name} <{customer_email}>
 Subject: {subject}
 Message:
 {message}
-
+{knowledge_block}
 Classification rules:
 - category must be one of: order_status, refund, return, damaged_item, billing, technical_issue, account_access, product_question, complaint, spam, other.
 - priority critical: safety risk, fraud, legal threat, account takeover, severe outage, or urgent high-impact complaint.
@@ -77,3 +86,4 @@ Reply rules:
 - Ask for missing order/account details when needed.
 - End with "Best regards,\nCustomer Support Team".
 """
+

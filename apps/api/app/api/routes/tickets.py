@@ -32,10 +32,11 @@ def read_tickets(
     current_user: CurrentUser,
     status_filter: str | None = Query(default=None, alias="status"),
     priority_filter: str | None = Query(default=None, alias="priority"),
+    sla_status_filter: str | None = Query(default=None, alias="sla_status"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
-    return list_tickets(db, organization_id, current_user, status_filter, priority_filter, limit, offset)
+    return list_tickets(db, organization_id, current_user, status_filter, priority_filter, sla_status_filter, limit, offset)
 
 
 @router.post("/bulk-actions", response_model=TicketBulkActionResponse)
@@ -113,3 +114,4 @@ def read_ticket_events(
     current_user: CurrentUser,
 ):
     return list_ticket_events(db, organization_id, ticket_id, current_user)
+

@@ -214,6 +214,24 @@ Current limitations:
 - Gmail import, Gmail history sync, AI triage, Gmail watch renewal, fallback sync, and watch-renewal scheduler behavior reuse existing business services through request-based task runner functions.
 - Render can remain available as a temporary fallback, but the verified staging baseline now uses Cloud Run, Pub/Sub, Cloud Scheduler, Vercel, and Supabase.
 
+
+## M9 Knowledge, Routing, and SLA Backend
+
+- Owner/admin users can manage organization-scoped knowledge sources with title, body, source type, owner, effective dates, active/archive state, and metadata.
+- Knowledge retrieval uses only active, effective sources from the same organization; archived sources are not used for new AI generation.
+- AI triage prompts can include matched workspace knowledge, and triage results store the source references used.
+- Knowledge usage is recorded with ticket, prompt version, matched terms, and score metadata.
+- Owner/admin users can manage routing rules with ordered conditions and actions.
+- Routing rules can be tested against a sample or existing ticket before activation.
+- Active routing rules run when tickets are created manually or imported from Gmail, and executions are recorded.
+- Routing actions currently support assignment to active members, priority floor, approval requirement, and record-only tag/notification metadata.
+- Workspace settings include business timezone, business hours, first-review target, and resolution target.
+- Tickets store SLA due dates and SLA status, and ticket list responses can filter by SLA status.
+
+Current limitations:
+
+- M9 frontend management surfaces and agent-visible source/SLA UI still need to be wired into the deployed dashboard.
+- M9 has been verified with backend tests and a local migration run, but has not yet been deployed or verified in staging.
 ## M8 Agent Productivity Features
 
 - Agents can save organization-scoped ticket views with user-scoped filters.
@@ -238,5 +256,6 @@ Current local links:
 - Backend health: `http://localhost:8001/health`
 
 Current local mode uses manual server processes. Staging/production async work now targets Google Pub/Sub and request-based Cloud Run task handlers instead of Redis/Celery workers.
+
 
 

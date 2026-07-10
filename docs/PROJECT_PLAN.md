@@ -2,7 +2,7 @@
 
 ## Current Stage
 
-The project is past the initial MVP foundation. The app now has a Next.js frontend, FastAPI backend, Supabase-backed PostgreSQL database, Supabase Auth, Gmail OAuth, Gmail import, AI triage with Gemini, reply approvals, Gmail draft creation, dashboard views, role-aware navigation, and local development servers.
+The project is past the initial MVP foundation. The app now has a Next.js frontend, FastAPI backend, Supabase-backed PostgreSQL database, Supabase Auth, Gmail OAuth, Gmail import, AI triage with Gemini, reply approvals, Gmail draft creation, dashboard views, role-aware navigation, knowledge/routing/SLA backend services, and local development servers.
 
 M7 staging and pilot release is verified for the core Cloud Run staging path. The repo has pilot controls, a mocked backend release smoke suite, and a Google Cloud Run/Pub/Sub task architecture that removes Redis/Celery from staging and production. Remaining M7 gaps are Gemini free-tier quota during testing, missing external error tracking, and final Vercel redeploy of the Gmail success-banner polish.
 
@@ -213,13 +213,17 @@ Replies should become more accurate through workspace knowledge, and ticket owne
 
 ### Backend Work
 
-- Implement M9 workspace knowledge models, retrieval services, routing rules, and SLA timers with organization isolation.
-- Keep knowledge retrieval scoped to organization-owned, active, effective knowledge only.
+- Implemented M9 workspace knowledge models, retrieval services, routing rules, routing execution records, and SLA timers with organization isolation.
+- Knowledge retrieval is scoped to organization-owned, active, effective knowledge only, and archived sources are excluded from new generation.
+- AI triage records knowledge source references and knowledge usage metadata by ticket and prompt version.
+- Ticket creation and Gmail import initialize SLA due dates and run active routing rules automatically.
+- Backend tests, lint, and a local Alembic migration run pass for M9.
 
 ### Frontend Work
 
 - Add owner/admin knowledge management, routing rule management, and agent-visible source references on ticket/reply workflows.
 - Add SLA status visibility to inbox filters and dashboard surfaces.
+- Deploy M9 backend changes, apply the staging migration, and verify the full flow against Cloud Run and Vercel before marking M9 complete.
 ## Later Milestones
 
 ### Knowledge and Automation
@@ -245,6 +249,7 @@ Replies should become more accurate through workspace knowledge, and ticket owne
 - Confirm deployed CORS origins.
 - Confirm Cloud Run task routes, Pub/Sub push subscriptions, and Cloud Scheduler jobs remain healthy after each staging deploy.
 - Run full end-to-end staging test.
+
 
 
 

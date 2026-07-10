@@ -9,6 +9,9 @@ from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketStat
 from app.models.ticket_event import TicketEvent
 from app.schemas.ticket import TicketAssign, TicketCreate, TicketListItem, TicketUpdate
 from app.services.rbac_service import require_membership
+from app.services.routing_rule_service import apply_routing_rules
+from app.services.sla_service import initialize_ticket_sla, refresh_ticket_sla_status
+from app.services.workspace_settings_service import get_or_create_workspace_settings
 from app.services.ticket_lifecycle_service import transition_ticket_status
 
 
@@ -79,6 +82,9 @@ def create_ticket(
     )
     db.add(ticket)
     db.flush()
+    settings = get_or_create_workspace_settings(db, organization_id)
+    initialize_ticket_sla(ticket, settings)
+    apply_routing_rules(db, ticket)
     write_ticket_event(db, ticket, actor, "ticket.created", {"source": "manual"})
     db.commit()
     try:
@@ -96,6 +102,7 @@ def list_tickets(
     actor: AuthenticatedUser,
     status_filter: str | None = None,
     priority_filter: str | None = None,
+    sla_status_filter: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[TicketListItem]:
@@ -119,6 +126,8 @@ def list_tickets(
         statement = statement.where(Ticket.status.notin_([TicketStatus.RESOLVED.value, TicketStatus.SPAM.value]))
     if priority_filter:
         statement = statement.where(Ticket.priority == priority_filter)
+    if sla_status_filter:
+        statement = statement.where(Ticket.sla_status == sla_status_filter)
 
     tickets = db.scalars(statement.limit(limit).offset(offset)).all()
     return [
@@ -136,6 +145,9 @@ def list_tickets(
             assigned_to_user_id=ticket.assigned_to_user_id,
             triage_status=ticket.triage_status,
             triage_error_message=ticket.triage_error_message,
+            first_review_due_at=ticket.first_review_due_at,
+            resolution_due_at=ticket.resolution_due_at,
+            sla_status=refresh_ticket_sla_status(ticket),
             received_at=ticket.received_at,
             updated_at=ticket.updated_at,
         )
@@ -183,6 +195,7 @@ def update_ticket(
 
     if changes:
         write_ticket_event(db, ticket, actor, "ticket.updated", {"changes": changes})
+    refresh_ticket_sla_status(ticket)
     db.commit()
     return get_ticket_or_404(db, organization_id, ticket_id, actor)
 
@@ -266,4 +279,5 @@ def list_ticket_events(
             .order_by(TicketEvent.created_at.asc())
         )
     )
+
 

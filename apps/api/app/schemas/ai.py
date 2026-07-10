@@ -39,6 +39,7 @@ class AITriageResultRead(BaseModel):
     reasoning: str
     requires_human_review: bool
     validation_status: str
+    knowledge_sources: list[dict] = []
     created_at: datetime
 
 
