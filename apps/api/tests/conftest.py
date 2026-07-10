@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -21,16 +21,17 @@ def reset_rate_limiter():
 
 @pytest.fixture(autouse=True)
 def stub_auto_triage_dispatch(monkeypatch):
-    class StubTaskResult:
-        id = "stub-ai-triage-task"
+    class StubDispatchedTask:
+        message_id = "stub-ai-triage-task"
+        topic = "local-ai-triage"
 
     calls: list[str] = []
 
-    def fake_delay(job_id: str):
+    def fake_publish(*, job_id: str):
         calls.append(job_id)
-        return StubTaskResult()
+        return StubDispatchedTask()
 
-    monkeypatch.setattr("app.worker.tasks.triage_ticket_task.delay", fake_delay)
+    monkeypatch.setattr("app.services.job_queue_service.publish_ai_triage_task", fake_publish)
     yield calls
 
 @pytest.fixture

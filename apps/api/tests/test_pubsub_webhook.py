@@ -60,7 +60,16 @@ def test_pubsub_webhook_records_valid_notification(client: TestClient, create_or
 
     monkeypatch.setattr("app.api.routes.webhooks.verify_pubsub_oidc_token", fake_verify)
     queued = []
-    monkeypatch.setattr("app.services.job_queue_service.history_sync_gmail_connection_task.delay", lambda *args: queued.append(args))
+
+    class StubDispatchedTask:
+        message_id = "history-sync-message"
+        topic = "local-gmail-history-sync"
+
+    def fake_publish(**kwargs):
+        queued.append(kwargs)
+        return StubDispatchedTask()
+
+    monkeypatch.setattr("app.services.job_queue_service.publish_gmail_history_sync_task", fake_publish)
 
     response = client.post(
         "/v1/webhooks/google/gmail",
@@ -84,7 +93,7 @@ def test_pubsub_webhook_records_valid_notification(client: TestClient, create_or
         assert event.status == "queued"
         assert event.notification_history_id == "12345"
         assert event.sync_metadata["delivery"] == "queued_history_sync"
-        assert queued and queued[0][0] == organization["id"]
+        assert queued and queued[0]["organization_id"] == organization["id"]
 
 
 def test_pubsub_webhook_rejects_malformed_payload(client: TestClient, monkeypatch) -> None:

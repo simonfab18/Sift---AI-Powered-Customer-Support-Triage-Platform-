@@ -1,33 +1,24 @@
 import argparse
 import logging
 
-from app.db.session import SessionLocal
-from app.services.job_queue_service import enqueue_due_watch_renewals, enqueue_fallback_syncs
+from app.services.task_runner_service import run_fallback_sync_scheduler_task, run_watch_renewals_scheduler_task
 
 logger = logging.getLogger(__name__)
 
 
 def run_fallback_sync() -> int:
-    db = SessionLocal()
-    try:
-        events = enqueue_fallback_syncs(db)
-        logger.info("Scheduled fallback sync queued", extra={"event_name": "scheduler.fallback_sync", "count": len(events)})
-        return len(events)
-    finally:
-        db.close()
+    event_ids = run_fallback_sync_scheduler_task()
+    logger.info("Scheduled fallback sync queued", extra={"event_name": "scheduler.fallback_sync", "count": len(event_ids)})
+    return len(event_ids)
 
 
 def run_watch_renewals() -> int:
-    db = SessionLocal()
-    try:
-        connection_ids = enqueue_due_watch_renewals(db)
-        logger.info(
-            "Scheduled watch renewals queued",
-            extra={"event_name": "scheduler.watch_renewal", "count": len(connection_ids)},
-        )
-        return len(connection_ids)
-    finally:
-        db.close()
+    connection_ids = run_watch_renewals_scheduler_task()
+    logger.info(
+        "Scheduled watch renewals queued",
+        extra={"event_name": "scheduler.watch_renewal", "count": len(connection_ids)},
+    )
+    return len(connection_ids)
 
 
 def main() -> None:

@@ -4,7 +4,7 @@
 
 The project is past the initial MVP foundation. The app now has a Next.js frontend, FastAPI backend, Supabase-backed PostgreSQL database, Supabase Auth, Gmail OAuth, Gmail import, AI triage with Gemini, reply approvals, Gmail draft creation, dashboard views, role-aware navigation, and local development servers.
 
-M7 staging and pilot release is partially complete locally. The repo has pilot controls and a mocked backend release smoke suite, but free hosting defers the always-on worker and scheduler acceptance items until a production-like staging environment is available.
+M7 staging and pilot release is partially complete locally. The repo has pilot controls, a mocked backend release smoke suite, and a new Google Cloud Run/Pub/Sub task architecture that removes Redis/Celery from staging and production. M7 remains partial until Cloud Run staging is deployed and verified end to end.
 
 ## Completed Milestones
 
@@ -13,7 +13,7 @@ M7 staging and pilot release is partially complete locally. The repo has pilot c
 - Created monorepo structure.
 - Added Next.js frontend with TypeScript.
 - Added FastAPI backend.
-- Added Docker Compose support for API, Redis, and worker.
+- Added Docker Compose support for local API helpers; staging/production now target Cloud Run and Pub/Sub task handlers.
 - Added environment templates.
 - Added health check endpoint.
 - Added basic CI workflow.
@@ -90,7 +90,7 @@ M7 staging and pilot release is partially complete locally. The repo has pilot c
 ### Production M1: Live Gmail Sync Foundation
 
 - Added Gmail watch registration after OAuth connection.
-- Added Gmail watch renewal service and worker task entrypoint.
+- Added Gmail watch renewal service and request-based task entrypoint.
 - Added Gmail watch and sync state fields to Gmail connections.
 - Added `gmail_sync_events` for watch registration, renewal, and Pub/Sub notification records.
 - Added authenticated Pub/Sub webhook foundation at `POST /v1/webhooks/google/gmail`.
@@ -102,7 +102,7 @@ M7 staging and pilot release is partially complete locally. The repo has pilot c
 - Added Gmail history-list processing from stored checkpoints.
 - Added duplicate-safe ticket creation for new `messagesAdded` notifications.
 - Added per-connection sync locks to avoid concurrent duplicate processing.
-- Added Pub/Sub webhook job enqueue and duplicate delivery handling.
+- Added Pub/Sub webhook job enqueue, internal Pub/Sub task dispatch, and duplicate delivery handling.
 - Added expired-checkpoint reconciliation with watch re-registration.
 - Added stale-connection fallback sync discovery.
 - Added owner/admin sync status and manual history-sync queue endpoints.
@@ -115,7 +115,7 @@ M7 staging and pilot release is partially complete locally. The repo has pilot c
 - Added ticket triage states for queued, running, succeeded, and failed triage.
 - Added one-active-job idempotency for each ticket.
 - Added prompt/schema version and latency metadata to AI triage results.
-- Added worker execution for AI triage jobs.
+- Added request-based Cloud Run task execution for AI triage jobs.
 - Added visible failure state and manual retry endpoint.
 - Added workspace setting support for disabling automatic triage.
 ### Production M4: Core Workflow Polish
@@ -134,7 +134,7 @@ M7 staging and pilot release is partially complete locally. The repo has pilot c
 - Expanded job-run tracking with queue, attempts, timing, related resources, correlation IDs, retry eligibility, error classification, alert owner, and runbook metadata.
 - Added owner/admin operations endpoints for recent workspace failures, job detail, safe retry, and Gmail sync health.
 - Added a token-protected internal operations endpoint for system-wide failed jobs.
-- Added structured JSON request and worker logging with safe request/job/resource context.
+- Added structured JSON request and task logging with safe request/job/resource context.
 - Added sanitized error handling so tokens, authorization headers, email bodies, and prompts are not written to normal logs.
 - Added `/health/live`, `/health/ready`, and richer `/v1/status` dependency reporting.
 - Added tests for operations access, retry behavior, sync-health redaction, and health/status checks.
@@ -158,9 +158,9 @@ Local implementation added:
 
 Deferred before M7 can be called complete:
 
-- Deploy API, worker, scheduler, Redis, database, frontend, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and error tracking in separate staging resources.
+- Deploy Cloud Run API/task routes, Cloud Scheduler, Supabase database/auth, Vercel frontend, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and error tracking with separated staging configuration.
 - Run the complete release suite against deployed staging without local services.
-- Verify worker/scheduler behavior, alerts, backup/restore, rollback, and a staging soak test.
+- Verify Pub/Sub task delivery, Cloud Scheduler behavior, alerts, backup/restore, rollback, and a staging soak test.
 ### Production M8: Agent Productivity Features
 
 Backend implementation added:
@@ -186,6 +186,13 @@ Still required for full acceptance:
 - Added responsive layout direction.
 - Added reusable product UI components for badges, cards, queue rows, and app navigation.
 
+### Production Architecture Migration: Google Cloud Run Tasks
+
+- Replaced deployed Redis/Celery assumptions with Google Pub/Sub task dispatch and request-based Cloud Run task handlers.
+- Added OIDC-protected task endpoints for Gmail import, Gmail history sync, AI triage, Gmail watch renewal, fallback sync, and watch-renewal scheduling.
+- Kept Supabase database/auth and Vercel frontend unchanged.
+- Render remains a fallback until Cloud Run staging is verified.
+
 ## Current Production Milestone: M8 Agent Productivity Features
 
 ### Goal
@@ -194,13 +201,13 @@ Agent queue handling should become faster and safer through saved views, bulk ac
 
 ### Current M7 Deferred Items
 
-- Worker and scheduler verification is deferred while staying on free hosting.
-- Full M7 acceptance still requires production-like staging with API, worker, scheduler, Redis, database, frontend, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and error tracking.
+- Redis/Celery worker verification is replaced by Cloud Run/Pub/Sub task verification.
+- Full M7 acceptance still requires production-like staging with Cloud Run API/task routes, Cloud Scheduler, Supabase database/auth, Vercel frontend, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and error tracking.
 
 ### Backend Work
 
 - Complete M8 backend APIs and database models for saved views, bulk actions, response templates, internal notes, mentions, and collaboration locks.
-- Keep M7 worker/scheduler verification deferred until paid or production-like hosting is available.
+- Keep M7 Cloud Run/Pub/Sub/Scheduler verification deferred until the new staging deployment is live.
 
 ### Frontend Work
 
@@ -233,6 +240,6 @@ Agent queue handling should become faster and safer through saved views, bulk ac
 - Confirm staging and production environment variables.
 - Confirm deployed Google OAuth redirect URLs.
 - Confirm deployed CORS origins.
-- Confirm Render worker and Redis are running.
+- Confirm Cloud Run task routes, Pub/Sub push subscriptions, and Cloud Scheduler jobs are running; keep Render as fallback until verified.
 - Run full end-to-end staging test.
 

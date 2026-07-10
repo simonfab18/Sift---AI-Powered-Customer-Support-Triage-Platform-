@@ -158,19 +158,24 @@ def test_queue_gmail_import_creates_queued_job(client: TestClient, create_org, m
     connection_id = create_connection(client, organization["id"])
     calls = []
 
-    def fake_delay(job_id, organization_id, queued_connection_id, actor_id, actor_email, max_results):
+    class StubDispatchedTask:
+        message_id = "gmail-import-message"
+        topic = "local-gmail-import"
+
+    def fake_publish(*, job_id, organization_id, connection_id, actor_id, actor_email, max_results):
         calls.append(
             {
                 "job_id": job_id,
                 "organization_id": organization_id,
-                "connection_id": queued_connection_id,
+                "connection_id": connection_id,
                 "actor_id": actor_id,
                 "actor_email": actor_email,
                 "max_results": max_results,
             }
         )
+        return StubDispatchedTask()
 
-    monkeypatch.setattr("app.services.job_queue_service.sync_gmail_connection_task.delay", fake_delay)
+    monkeypatch.setattr("app.services.job_queue_service.publish_gmail_import_task", fake_publish)
 
     response = client.post(
         f"/v1/orgs/{organization['id']}/gmail/connections/{connection_id}/sync/queue",
@@ -203,10 +208,10 @@ def test_queue_gmail_import_marks_job_failed_when_broker_is_down(client: TestCli
     organization = create_org()
     connection_id = create_connection(client, organization["id"])
 
-    def fake_delay(*args, **kwargs):
-        raise RuntimeError("redis unavailable")
+    def fake_publish(*args, **kwargs):
+        raise RuntimeError("pubsub unavailable")
 
-    monkeypatch.setattr("app.services.job_queue_service.sync_gmail_connection_task.delay", fake_delay)
+    monkeypatch.setattr("app.services.job_queue_service.publish_gmail_import_task", fake_publish)
 
     response = client.post(
         f"/v1/orgs/{organization['id']}/gmail/connections/{connection_id}/sync/queue",

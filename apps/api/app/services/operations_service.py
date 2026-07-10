@@ -1,4 +1,4 @@
-﻿from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import re
 from uuid import uuid4
 
@@ -24,7 +24,8 @@ RETRYABLE_PATTERNS = (
     "502",
     "503",
     "504",
-    "redis",
+    "pubsub",
+    "pub/sub",
     "database",
     "connection reset",
     "temporarily unavailable",

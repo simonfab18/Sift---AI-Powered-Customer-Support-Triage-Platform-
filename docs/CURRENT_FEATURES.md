@@ -36,9 +36,9 @@ Owner/admin capabilities include workspace management, Gmail connection, and tea
 - Gmail can be disconnected.
 - Gmail import rules can be viewed and updated.
 - Gmail watches can be registered after OAuth connection.
-- Gmail watch renewal has a backend service and worker task entrypoint.
+- Gmail watch renewal has a backend service and request-based Cloud Run task entrypoint.
 - Gmail connection responses include watch and sync status fields.
-- Authenticated Google Pub/Sub push notifications can be accepted at `/v1/webhooks/google/gmail` and queued for Gmail history sync.
+- Authenticated Google Pub/Sub push notifications can be accepted at `/v1/webhooks/google/gmail` and queued to Google Pub/Sub-backed Cloud Run task handlers for Gmail history sync.
 - Gmail history sync processes `messagesAdded` changes from stored checkpoints.
 - Duplicate Gmail message IDs are skipped during live and manual import.
 - Expired Gmail history checkpoints trigger bounded reconciliation and watch re-registration.
@@ -191,8 +191,17 @@ Metrics are used by the overview and analytics UI.
 
 Current limitation:
 
-- M7 is intentionally marked partial for the current free-hosting path. Real acceptance still requires a deployed staging environment with separate Supabase, Redis, Google OAuth, Pub/Sub, Gmail test inbox, worker, scheduler, Gemini, and error-tracking credentials.
+- M7 is intentionally marked partial until the new Google Cloud Run staging environment is verified with separate staging configuration, Supabase, Google OAuth, Pub/Sub, Gmail test inbox, Cloud Scheduler, Gemini, and error-tracking credentials.
 
+
+## Google Cloud Run Task Architecture
+
+
+- Staging and production backend execution is moving from Render plus Redis/Celery to Google Cloud Run plus Google Pub/Sub task push handlers.
+- The public API remains reachable for Vercel, Gmail OAuth callbacks, and Gmail webhook delivery. Normal app routes continue to use Supabase JWT authentication and organization/role authorization.
+- Internal task routes under `/v1/tasks/...` require Google service-account OIDC tokens with expected issuer, audience, and service-account email validation.
+- Gmail import, Gmail history sync, AI triage, Gmail watch renewal, fallback sync, and watch-renewal scheduler behavior reuse existing business services through request-based task runner functions.
+- Render remains available as a temporary fallback until Cloud Run staging verification is complete.
 
 ## M8 Agent Productivity Features
 
@@ -217,5 +226,5 @@ Current local links:
 - Frontend: `http://localhost:3002`
 - Backend health: `http://localhost:8001/health`
 
-Current local mode uses manual server processes. Docker is available for API, Redis, and worker testing, but it is not required for everyday frontend/backend debugging.
+Current local mode uses manual server processes. Staging/production async work now targets Google Pub/Sub and request-based Cloud Run task handlers instead of Redis/Celery workers.
 

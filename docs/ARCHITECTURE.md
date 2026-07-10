@@ -4,17 +4,20 @@
 
 ```mermaid
 flowchart LR
-    User["User / Agent"] --> Web["Next.js Frontend"]
+    User["User / Agent"] --> Web["Next.js Frontend on Vercel"]
     Web --> Auth["Supabase Auth"]
-    Web --> API["FastAPI Backend"]
+    Web --> API["FastAPI Backend on Cloud Run"]
     API --> DB["Supabase PostgreSQL"]
     API --> Gmail["Gmail API"]
     API --> Gemini["Gemini API"]
-    API --> Redis["Redis"]
-    Redis --> Worker["Celery Worker"]
-    Worker --> DB
-    Worker --> Gmail
-    Worker --> Gemini
+    API --> TaskTopics["Google Pub/Sub Task Topics"]
+    TaskTopics --> TaskRoutes["OIDC-Protected Cloud Run Task Routes"]
+    TaskRoutes --> DB
+    TaskRoutes --> Gmail
+    TaskRoutes --> Gemini
+    Scheduler["Cloud Scheduler"] --> TaskRoutes
+    GmailNotifications["Gmail Pub/Sub Notifications"] --> Webhook["OIDC-Protected Gmail Webhook"]
+    Webhook --> TaskTopics
 ```
 
 ## Monorepo Layout
@@ -84,7 +87,10 @@ Important backend areas:
 - `apps/api/app/schemas`: Pydantic request/response schemas.
 - `apps/api/app/services`: business logic.
 - `apps/api/app/integrations`: Gmail and Gemini integrations.
-- `apps/api/app/worker`: Celery worker entrypoints/tasks.
+- `apps/api/app/services/task_dispatcher_service.py`: Google Pub/Sub task publishing.
+- `apps/api/app/services/task_runner_service.py`: reusable request-based task execution functions.
+- `apps/api/app/api/routes/tasks.py`: OIDC-protected Cloud Run task endpoints.
+- `apps/api/app/worker`: legacy compatibility wrappers only; not used by staging or production.
 
 ## Database
 
@@ -151,7 +157,7 @@ sequenceDiagram
     API-->>Web: Import summary
 ```
 
-Current behavior supports manual import, authenticated Gmail push notifications through Google Cloud Pub/Sub, worker-based Gmail history sync, and scheduled fallback sync discovery. M7 pilot controls can pause sync/watch behavior globally or per workspace without deleting connected Gmail data.
+Current behavior supports manual import, authenticated Gmail push notifications through Google Cloud Pub/Sub, Pub/Sub-dispatched Gmail history sync, and Cloud Scheduler-triggered fallback sync discovery. M7 pilot controls can pause sync/watch behavior globally or per workspace without deleting connected Gmail data.
 
 ## AI Triage Flow
 
@@ -246,11 +252,13 @@ Key endpoint groups:
 Recommended deployment:
 
 - Vercel for the Next.js frontend.
-- Render or Railway for the FastAPI backend.
-- Render worker service for Celery.
-- Redis for job queue/broker.
+- Google Cloud Run for the public FastAPI backend and protected task routes.
+- Google Pub/Sub for request-based Gmail import, Gmail history sync, AI triage, and Gmail watch-renewal task dispatch.
+- Google Cloud Scheduler for fallback sync and watch-renewal scans.
 - Supabase for PostgreSQL and Auth.
-- Google Cloud Console for Gmail OAuth and Pub/Sub.`r`n- Staging and production pilot controls through deployment env vars plus workspace settings.
+- Google Cloud Console for Gmail OAuth and Pub/Sub.
+- Render remains a fallback until Cloud Run staging is verified.
+- Staging and production pilot controls through deployment env vars plus workspace settings.
 
 ## Current Local Runtime
 
@@ -260,14 +268,14 @@ Current local development links:
 - Backend: `http://localhost:8001`
 - Backend health: `http://localhost:8001/health`
 
-Docker can run API, Redis, and worker locally, but normal UI/API debugging can be done with local dev servers.
+Docker can run local development helpers, but staging and production do not require Redis or a Celery worker. Normal UI/API debugging can be done with local dev servers.
 
 ## Known Architecture Gaps
 
-- A real staging Gmail-to-draft release suite still must pass against deployed API, worker, Redis, Supabase, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and scheduler resources.
+- A real staging Gmail-to-draft release suite still must pass against deployed Cloud Run API/task routes, Supabase, Google OAuth, Pub/Sub, Gmail test inbox, Gemini, and Cloud Scheduler resources.
 - Production-grade Gmail push sync requires correctly configured Google Cloud Pub/Sub and authenticated push delivery in each environment.
 - Gmail watches must be renewed regularly once push sync is added.
-- Fallback sync exists, but staging must verify scheduler/worker execution and missed-notification recovery outside local services.
+- Fallback sync exists, but staging must verify Cloud Scheduler, Pub/Sub task delivery, and missed-notification recovery outside local services.
 - Exposed development secrets should be rotated before a real production pilot.
 
 

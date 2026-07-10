@@ -12,7 +12,13 @@ from app.services.email_import_service import create_gmail_import_job
 from app.services.gmail_history_sync_service import create_history_sync_event, list_stale_connections
 from app.services.operations_service import mark_job_failed
 from app.services.pilot_control_service import ensure_auto_triage_enabled, ensure_sync_enabled, is_auto_triage_enabled
-from app.worker.tasks import history_sync_gmail_connection_task, renew_gmail_watch_task, sync_gmail_connection_task
+from app.services.task_dispatcher_service import (
+    TaskDispatchError,
+    publish_ai_triage_task,
+    publish_gmail_history_sync_task,
+    publish_gmail_import_task,
+    publish_watch_renewal_task,
+)
 
 
 def enqueue_gmail_import(
@@ -25,14 +31,16 @@ def enqueue_gmail_import(
     ensure_sync_enabled(db, organization_id)
     job = create_gmail_import_job(db, organization_id, connection_id, actor, max_results=max_results)
     try:
-        sync_gmail_connection_task.delay(
-            job.id,
-            organization_id,
-            connection_id,
-            actor.id,
-            actor.email,
-            max_results,
+        dispatched = publish_gmail_import_task(
+            job_id=job.id,
+            organization_id=organization_id,
+            connection_id=connection_id,
+            actor_id=actor.id,
+            actor_email=actor.email,
+            max_results=max_results,
         )
+        job.job_metadata = {**(job.job_metadata or {}), "dispatch_message_id": dispatched.message_id, "dispatch_topic": dispatched.topic}
+        db.commit()
         db.refresh(job)
     except Exception as exc:
         mark_job_failed(job, RuntimeError(f"Could not enqueue Gmail import job: {exc}"))
@@ -40,7 +48,7 @@ def enqueue_gmail_import(
         db.refresh(job)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not enqueue Gmail import job. Is Redis/Celery running?",
+            detail="Could not enqueue Gmail import job. Is Pub/Sub task dispatch configured?",
         ) from exc
     return job
 
@@ -106,9 +114,10 @@ def enqueue_ticket_triage(
     db.refresh(job)
 
     try:
-        from app.worker.tasks import triage_ticket_task
-
-        triage_ticket_task.delay(job.id)
+        dispatched = publish_ai_triage_task(job_id=job.id)
+        job.job_metadata = {**(job.job_metadata or {}), "dispatch_message_id": dispatched.message_id, "dispatch_topic": dispatched.topic}
+        db.commit()
+        db.refresh(job)
     except Exception as exc:
         mark_job_failed(job, RuntimeError(f"Could not enqueue AI triage job: {exc}"))
         ticket.triage_status = TicketTriageStatus.FAILED.value
@@ -119,7 +128,7 @@ def enqueue_ticket_triage(
         if raise_on_enqueue_error:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Could not enqueue AI triage job. Is Redis/Celery running?",
+                detail="Could not enqueue AI triage job. Is Pub/Sub task dispatch configured?",
             ) from exc
     return job
 
@@ -154,13 +163,16 @@ def enqueue_gmail_history_sync(
     db.commit()
     db.refresh(event)
     try:
-        history_sync_gmail_connection_task.delay(
-            organization_id,
-            connection_id,
-            event.id,
-            notification_history_id,
-            trigger_type,
+        dispatched = publish_gmail_history_sync_task(
+            organization_id=organization_id,
+            connection_id=connection_id,
+            event_id=event.id,
+            notification_history_id=notification_history_id,
+            trigger_type=trigger_type,
         )
+        event.sync_metadata = {**(event.sync_metadata or {}), "dispatch_message_id": dispatched.message_id, "dispatch_topic": dispatched.topic}
+        db.commit()
+        db.refresh(event)
     except Exception as exc:
         event.status = "failed"
         event.error_code = "enqueue_failed"
@@ -169,7 +181,7 @@ def enqueue_gmail_history_sync(
         db.refresh(event)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not enqueue Gmail history sync job. Is Redis/Celery running?",
+            detail="Could not enqueue Gmail history sync job. Is Pub/Sub task dispatch configured?",
         ) from exc
     return event
 
@@ -192,6 +204,7 @@ def enqueue_fallback_syncs(db: Session) -> list[GmailSyncEvent]:
         events.append(event)
     return events
 
+
 def enqueue_due_watch_renewals(db: Session) -> list[str]:
     from datetime import UTC, datetime, timedelta
 
@@ -207,6 +220,9 @@ def enqueue_due_watch_renewals(db: Session) -> list[str]:
         )
     )
     for connection in connections:
-        renew_gmail_watch_task.delay(connection.organization_id, connection.id)
+        try:
+            publish_watch_renewal_task(organization_id=connection.organization_id, connection_id=connection.id)
+        except TaskDispatchError:
+            raise
         connection_ids.append(connection.id)
     return connection_ids

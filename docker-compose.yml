@@ -1,4 +1,4 @@
-﻿services:
+services:
   web:
     build:
       context: .
@@ -24,35 +24,11 @@
       - ./apps/api/.env
     ports:
       - "8000:8000"
-    depends_on:
-      - redis
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./apps/api:/app
 
-  worker:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
-    env_file:
-      - ./apps/api/.env
-    depends_on:
-      - redis
-    command: celery -A app.worker.celery_app.celery_app worker --loglevel=info
-    volumes:
-      - ./apps/api:/app
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-
 volumes:
-  redis_data:
   web_root_node_modules:
   web_app_node_modules:
   web_next_cache:
-

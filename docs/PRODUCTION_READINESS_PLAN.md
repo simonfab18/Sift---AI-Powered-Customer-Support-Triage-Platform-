@@ -1,4 +1,4 @@
-﻿# Production Readiness Plan
+# Production Readiness Plan
 
 **Product:** AI Customer Support Triage and Response System  
 **Working product name:** Sift  
@@ -47,7 +47,7 @@ This plan treats the existing workflow as the product core. It does not recommen
 - Dashboard and analytics foundations
 - Team and workspace management
 - Audit logs and ticket events
-- Redis and Celery foundations
+- Google Cloud Run and Pub/Sub task foundations
 - Basic CI and Docker support
 
 ### Production-critical gaps
@@ -107,7 +107,7 @@ Do not block the first launch on:
 3. **A push notification is a signal, not the source of truth.** Gmail history is the source used to discover mailbox changes.
 4. **The UI must expose operational truth.** Do not show â€œliveâ€ or â€œhealthyâ€ unless the backend can verify it.
 5. **Organization isolation is enforced in the backend.** Frontend filtering is never a security boundary.
-6. **Background work must be retryable.** Network, Gmail, Gemini, Redis, and database failures must have defined retry behavior.
+6. **Background work must be retryable.** Network, Gmail, Gemini, Pub/Sub task dispatch, and database failures must have defined retry behavior.
 7. **Manual controls stay available.** Keep manual Sync, Retry, Re-run triage, and reconnect actions.
 8. **Production features require observability.** A feature is not complete until failures are visible to operators.
 
@@ -119,47 +119,39 @@ Do not block the first launch on:
 flowchart LR
     User["Agent / Admin"] --> Web["Next.js on Vercel"]
     Web --> Auth["Supabase Auth"]
-    Web --> API["FastAPI API"]
+    Web --> API["FastAPI API on Cloud Run"]
     API --> DB["Supabase PostgreSQL"]
-    API --> Redis["Redis"]
     API --> Gmail["Gmail API"]
     API --> Gemini["Gemini API"]
+    API --> TaskTopics["Google Pub/Sub Task Topics"]
 
-    Gmail --> Topic["Google Cloud Pub/Sub Topic"]
-    Topic --> Webhook["Authenticated Pub/Sub Push Endpoint"]
-    Webhook --> Redis
-    Redis --> SyncWorker["Celery Gmail Sync Worker"]
-    Redis --> AIWorker["Celery AI Worker"]
-    Redis --> MaintenanceWorker["Celery Maintenance Worker"]
+    Gmail --> GmailTopic["Google Cloud Pub/Sub Gmail Topic"]
+    GmailTopic --> Webhook["Authenticated Pub/Sub Push Endpoint"]
+    Webhook --> TaskTopics
 
-    SyncWorker --> Gmail
-    SyncWorker --> DB
-    SyncWorker --> Redis
-    AIWorker --> Gemini
-    AIWorker --> DB
-    MaintenanceWorker --> Gmail
-    MaintenanceWorker --> DB
+    TaskTopics --> TaskRoutes["OIDC-Protected Cloud Run Task Routes"]
+    TaskRoutes --> Gmail
+    TaskRoutes --> Gemini
+    TaskRoutes --> DB
 
-    Scheduler["Celery Beat or Managed Cron"] --> Redis
+    Scheduler["Cloud Scheduler"] --> TaskRoutes
     API --> Observability["Logs, Errors, Metrics, Alerts"]
-    SyncWorker --> Observability
-    AIWorker --> Observability
+    TaskRoutes --> Observability
 ```
 
 ### Recommended deployment shape
 
 - **Frontend:** Vercel
-- **API:** Render or Railway web service
-- **Workers:** Separate worker service from the API
-- **Scheduler:** Celery Beat or one managed cron service
-- **Redis:** Managed Redis
+- **API:** Google Cloud Run public FastAPI service
+- **Async tasks:** Google Pub/Sub push subscriptions invoking OIDC-protected Cloud Run task routes
+- **Scheduler:** Google Cloud Scheduler invoking OIDC-protected scheduler task routes
 - **Database and Auth:** Supabase
 - **Mailbox notifications:** Google Cloud Pub/Sub
 - **Error tracking:** Sentry or equivalent
 - **Uptime monitoring:** External health checks
 - **Logs:** Structured JSON logs with searchable request and job IDs
 
-Use one scheduler owner. Do not run duplicate schedulers across multiple API or worker instances.
+Redis and Celery are retired from staging and production. Use one scheduler owner. Do not run duplicate Cloud Scheduler jobs for the same environment.
 
 ---
 
@@ -170,7 +162,7 @@ Use one scheduler owner. Do not run duplicate schedulers across multiple API or 
 | 0 | Baseline and release control | Completed locally | Tests pass and environments are documented |
 | 1 | Automatic Gmail sync | In progress - M2 sync core completed and M5 sync health backend added | Sync health UI and staging soak pass |
 | 2 | Core workflow completion | In progress - M4 workflow core completed and M5 operations backend added | Staging verification is complete |
-| 3 | Operational controls | Completed locally - failures can be seen, traced, and safely retried | External alert delivery, hosted runbooks, worker heartbeat, and staging verification exist |
+| 3 | Operational controls | Completed locally - failures can be seen, traced, and safely retried | External alert delivery, hosted runbooks, task-route monitoring, and staging verification exist |
 | 4 | Security and data protection | Completed locally - tenant checks, rate limits, token lifecycle, and data procedures are in place | Staging secret rotation and backup/restore validation pass |
 | 5 | UI and product polish | Product is understandable and trustworthy | All critical states and responsive flows pass |
 | 6 | QA, staging, and performance | Release is proven outside local development | E2E, load, failure, and migration tests pass |
@@ -194,7 +186,7 @@ Create a controlled foundation before adding live synchronization.
 - Define `development`, `staging`, and `production` environments.
 - Add a release checklist.
 - Add semantic or date-based release tags.
-- Document rollback steps for frontend, API, worker, and database.
+- Document rollback steps for frontend, API/task routes, Pub/Sub subscriptions, Scheduler jobs, and database.
 - Add an ownership file or maintainer list for critical modules.
 
 ### Database migrations
@@ -211,11 +203,11 @@ Create a validated settings model for:
 
 - Supabase URL and keys
 - Database URL
-- Redis URL
+- Task queue backend and Pub/Sub task topic names
 - Gmail OAuth client details
 - Gmail encryption key
 - Google Cloud project, topic, and subscription
-- Pub/Sub expected audience and service-account email
+- Gmail Pub/Sub expected audience/service-account email and internal task-route OIDC audience/service-account emails
 - Gemini API key and model
 - Frontend origin
 - Error-tracking DSN
@@ -225,7 +217,7 @@ Create a validated settings model for:
 - Sync fallback interval
 - Watch-renewal schedule
 
-The API and worker must fail fast when required production settings are missing.
+The API must fail fast when required production settings are missing.
 
 ## Exit criteria
 
@@ -291,7 +283,7 @@ Unknown, disconnected, malformed, or unauthorized events must be logged safely w
 
 ## 1.4 Incremental history synchronization
 
-The worker must:
+The task handler must:
 
 1. Acquire a short-lived lock for the Gmail connection.
 2. Load the stored `gmail_history_id`.
@@ -444,7 +436,7 @@ Make the full ticket-to-draft workflow reliable, fast, and consistent.
 
 ## 2.1 Automatic triage
 
-Status: Backend queueing, worker execution, failure visibility, version metadata, and manual retry completed in M3.
+Status: Backend queueing, request-based task execution, failure visibility, version metadata, and manual retry completed in M3.
 
 When a new ticket is created:
 
@@ -570,7 +562,7 @@ Classify errors:
 - Gmail 5xx
 - Gemini 429
 - Gemini 5xx
-- Temporary Redis or database connectivity issue
+- Temporary Pub/Sub task dispatch or database connectivity issue
 
 ### Not automatically retryable
 
@@ -610,7 +602,7 @@ Track at minimum:
 - Gemini request error rate
 - Draft creation failure rate
 - Database connection saturation
-- Redis availability
+- Pub/Sub task dispatch configuration
 
 ## 3.5 Alerts
 
@@ -622,7 +614,7 @@ Create alerts for:
 - Gmail connection stale beyond threshold
 - Repeated watch-renewal failure
 - Repeated history-sync failure
-- Database or Redis outage
+- Database outage or Pub/Sub task dispatch failure
 - Elevated 5xx rate
 - Migration failure
 - OAuth callback failure spike
@@ -639,7 +631,7 @@ Create runbooks for:
 - Gmail history checkpoint expired
 - Queue backlog
 - Worker crash loop
-- Redis unavailable
+- Pub/Sub task dispatch unavailable
 - Gemini unavailable
 - Database migration failure
 - Accidental secret exposure
@@ -661,7 +653,7 @@ Completed locally in M5:
 - Expanded the job-run schema with queue name, attempts, max attempts, correlation ID, related resource, error class/code, retry eligibility, next retry time, duration, alert owner, and runbook URL fields.
 - Added owner/admin operations endpoints for workspace failures, job detail, safe replay, and Gmail sync health.
 - Added a token-protected internal endpoint for system-wide failed jobs.
-- Added structured JSON API and worker logs with request ID, job ID, organization ID, connection ID, ticket ID, event name, duration, release, environment, and sanitized errors.
+- Added structured JSON API and task logs with request ID, job ID, organization ID, connection ID, ticket ID, event name, duration, release, environment, and sanitized errors.
 - Added error classification for retryable queue/provider/database failures and terminal errors.
 - Added `/health/live`, `/health/ready`, and `/v1/status` dependency reporting.
 - Added tests for operations access control, retry behavior, sync-health redaction, internal token protection, and health/status checks.
@@ -669,9 +661,9 @@ Completed locally in M5:
 Remaining before production exit:
 
 - Configure external alert delivery and hosted runbook URLs.
-- Add worker heartbeat and queue-depth monitoring against deployed Redis/Celery.
+- Add task-route health, Pub/Sub dead-letter/retry, and Cloud Scheduler monitoring.
 - Add the frontend operations page for owner/admin users.
-- Verify the full flow in staging with real API, worker, Redis, database, Gmail, Pub/Sub, and Gemini dependencies.
+- Verify the full flow in staging with real Cloud Run API/task routes, Cloud Scheduler, database, Gmail, Pub/Sub, and Gemini dependencies.
 
 ---
 
@@ -765,7 +757,7 @@ Remaining before production exit:
 
 - Rotate real deployed secrets in staging/production provider dashboards.
 - Validate backup and restore in staging.
-- Replace in-memory rate limiting with Redis-backed limiting if API instances scale horizontally.
+- Replace in-memory rate limiting with a shared managed limiter if API instances scale horizontally.
 - Implement self-serve organization export/deletion after product/legal approval.
 
 ---
@@ -865,7 +857,7 @@ Prove the production design before exposing real customer inboxes.
 - Gmail connection model behavior
 - Sync-event persistence
 - Worker-to-database interaction
-- Redis job enqueueing
+- Pub/Sub task enqueueing
 - History pagination
 - Expired checkpoint recovery
 - Watch renewal
@@ -896,7 +888,7 @@ Prove the production design before exposing real customer inboxes.
 - Gmail returns 429.
 - Gmail token is revoked.
 - Gemini returns invalid JSON.
-- Redis restarts.
+- Pub/Sub push delivery retries or Cloud Run task route failures.
 - Database transaction fails.
 - Watch expires.
 - History checkpoint returns 404.

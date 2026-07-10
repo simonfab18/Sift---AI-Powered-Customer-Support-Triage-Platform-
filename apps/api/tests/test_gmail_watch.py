@@ -130,10 +130,16 @@ def test_enqueue_due_watch_renewals_queues_expiring_active_connections(client: T
 
     organization = create_org()
     queued: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        "app.services.job_queue_service.renew_gmail_watch_task.delay",
-        lambda organization_id, connection_id: queued.append((organization_id, connection_id)),
-    )
+
+    class StubDispatchedTask:
+        message_id = "watch-renewal-message"
+        topic = "local-watch-renewal"
+
+    def fake_publish(*, organization_id: str, connection_id: str):
+        queued.append((organization_id, connection_id))
+        return StubDispatchedTask()
+
+    monkeypatch.setattr("app.services.job_queue_service.publish_watch_renewal_task", fake_publish)
 
     with client.session_factory() as db:
         due_connection = GmailConnection(

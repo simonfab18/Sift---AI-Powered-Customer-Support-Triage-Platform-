@@ -1,4 +1,4 @@
-﻿from fastapi.testclient import TestClient
+from fastapi.testclient import TestClient
 
 from app.main import create_app
 
@@ -23,7 +23,7 @@ def test_liveness_check_returns_ok() -> None:
 
 def test_readiness_reports_dependencies(monkeypatch) -> None:
     monkeypatch.setattr("app.api.routes.health.check_database", lambda: (True, None))
-    monkeypatch.setattr("app.api.routes.health.check_redis", lambda: (True, None))
+    monkeypatch.setattr("app.api.routes.health.check_task_queue_config", lambda: (True, "pubsub configured"))
     client = TestClient(create_app())
 
     response = client.get("/health/ready")
@@ -31,14 +31,14 @@ def test_readiness_reports_dependencies(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
     assert response.json()["dependencies"]["database"]["status"] == "ok"
-    assert response.json()["dependencies"]["redis"]["status"] == "ok"
+    assert response.json()["dependencies"]["task_queue"]["status"] == "ok"
 
 
 def test_status_returns_service_status(monkeypatch) -> None:
     monkeypatch.setattr("app.api.routes.health.check_database", lambda: (True, None))
-    monkeypatch.setattr("app.api.routes.health.check_redis", lambda: (True, None))
+    monkeypatch.setattr("app.api.routes.health.check_task_queue_config", lambda: (True, "pubsub configured"))
     monkeypatch.setattr("app.api.routes.status.check_database", lambda: (True, None))
-    monkeypatch.setattr("app.api.routes.status.check_redis", lambda: (True, None))
+    monkeypatch.setattr("app.api.routes.status.check_task_queue_config", lambda: (True, "pubsub configured"))
     client = TestClient(create_app())
 
     response = client.get("/v1/status")
