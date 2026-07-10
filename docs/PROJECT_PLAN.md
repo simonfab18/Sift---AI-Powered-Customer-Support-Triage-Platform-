@@ -173,7 +173,7 @@ Backend implementation added:
 
 Frontend implementation added:
 
-- Wired saved views, bulk action controls, response templates, internal notes, note edit history, and edit-lock warnings into the frontend ticket queue/detail UI.
+- Wired saved views, bulk action controls, response templates, internal notes, note edit history, tracked mentions, and edit-lock warnings into the frontend ticket queue/detail UI.
 
 Still required for full acceptance:
 
@@ -207,7 +207,7 @@ Agent queue handling should become faster and safer through saved views, bulk ac
 - Complete ticket queue saved-view controls.
 - Complete multi-select and confirmation flows for bulk actions.
 - Complete response template search/insert UI on ticket detail.
-- Complete internal notes and visible edit-history surfaces.
+- Complete internal notes plus visible edit-history and mention surfaces.
 - Complete edit-lock warnings for reply editing.
 - Staging validation remains required for real multi-user lock behavior and deployed credential flows.
 ## Later Milestones

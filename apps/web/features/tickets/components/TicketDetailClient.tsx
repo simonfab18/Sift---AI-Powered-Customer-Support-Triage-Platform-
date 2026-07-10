@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/Button";
@@ -60,6 +60,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
   const [activeLock, setActiveLock] = useState<CollaborationLock | null>(null);
+  const activeLockRef = useRef<CollaborationLock | null>(null);
   const [lockWarning, setLockWarning] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

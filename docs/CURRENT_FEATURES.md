@@ -205,7 +205,7 @@ Current limitation:
 - Internal notes are stored separately from customer-visible reply suggestions, include edit history, support active-member email mentions, and write ticket/audit events.
 - Collaboration locks can warn/block concurrent reply edits so one agent cannot silently overwrite another active editor.
 - The ticket queue UI supports saved views, multi-select, and bulk action flows for status updates, assignment, spam marking, resolving, and safe triage retry.
-- The ticket detail UI supports response template search/insertion, internal notes, note edit history, and visible reply edit-lock warnings.
+- The ticket detail UI supports response template search/insertion, internal notes, note edit history, tracked mentions, and visible reply edit-lock warnings.
 
 Current limitation:
 
