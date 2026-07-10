@@ -19,6 +19,7 @@ import {
   getReplySuggestions,
   getResponseTemplates,
   getTicket,
+  getTicketRoutingExecutions,
   getTicketEvents,
   getTicketTriageResults,
   insertResponseTemplate,
@@ -36,6 +37,7 @@ import type {
   InternalNoteMention,
   ReplySuggestion,
   ResponseTemplate,
+  RoutingRuleExecution,
   Ticket,
   TicketEvent,
 } from "../types";
@@ -52,6 +54,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const [replySuggestions, setReplySuggestions] = useState<ReplySuggestion[]>([]);
   const [templates, setTemplates] = useState<ResponseTemplate[]>([]);
   const [notes, setNotes] = useState<InternalNote[]>([]);
+  const [routingExecutions, setRoutingExecutions] = useState<RoutingRuleExecution[]>([]);
   const [noteEdits, setNoteEdits] = useState<Record<string, InternalNoteEdit[]>>({});
   const [noteMentions, setNoteMentions] = useState<Record<string, InternalNoteMention[]>>({});
   const [replyText, setReplyText] = useState("");
@@ -101,18 +104,20 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
       const loadedTicket = await getTicket(context.organizationId, ticketId, context.accessToken);
       setTicket(loadedTicket);
 
-      const [loadedEvents, loadedResults, loadedSuggestions, loadedTemplates, loadedNotes] = await Promise.all([
+      const [loadedEvents, loadedResults, loadedSuggestions, loadedTemplates, loadedNotes, loadedRoutingExecutions] = await Promise.all([
         getTicketEvents(context.organizationId, ticketId, context.accessToken).catch(() => []),
         getTicketTriageResults(context.organizationId, ticketId, context.accessToken).catch(() => []),
         getReplySuggestions(context.organizationId, ticketId, context.accessToken).catch(() => []),
         getResponseTemplates(context.organizationId, context.accessToken).catch(() => []),
         getInternalNotes(context.organizationId, ticketId, context.accessToken).catch(() => []),
+        getTicketRoutingExecutions(context.organizationId, ticketId, context.accessToken).catch(() => []),
       ]);
       setEvents(loadedEvents);
       setTriageResults(loadedResults);
       setReplySuggestions(loadedSuggestions);
       setTemplates(loadedTemplates);
       setNotes(loadedNotes);
+      setRoutingExecutions(loadedRoutingExecutions);
       const latestSuggestion = loadedSuggestions[0];
       setReplyText(latestSuggestion?.edited_body ?? latestSuggestion?.body ?? "");
     } catch (error) {
@@ -367,7 +372,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                   <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-slate-900">{ticket.subject}</h2>
                   <p className="mt-2 text-sm text-slate-500">From {ticket.customer.name ?? ticket.customer.email} - {new Date(ticket.received_at).toLocaleString()}</p>
                 </div>
-                <div className="flex flex-wrap gap-2"><UrgencyBadge priority={ticket.priority} /><StatusBadge status={ticket.status} /></div>
+                <div className="flex flex-wrap gap-2"><UrgencyBadge priority={ticket.priority} /><StatusBadge status={ticket.status} /><span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium capitalize text-slate-600">SLA {ticket.sla_status.replaceAll("_", " ")}</span></div>
               </div>
             </div>
             <div className="max-h-[calc(100vh-280px)] overflow-y-auto p-5">
@@ -399,6 +404,8 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                 <div><dt className="text-slate-500">Category</dt><dd className="mt-1 font-medium capitalize">{ticket.category.replaceAll("_", " ")}</dd></div>
                 <div><dt className="text-slate-500">Triage</dt><dd className="mt-1 font-medium capitalize">{ticket.triage_status.replaceAll("_", " ")}</dd></div>
                 <div><dt className="text-slate-500">Review</dt><dd className="mt-1 font-medium">{latestTriage?.requires_human_review ? "Required" : "Not flagged"}</dd></div>
+                <div><dt className="text-slate-500">First review due</dt><dd className="mt-1 font-medium">{ticket.first_review_due_at ? new Date(ticket.first_review_due_at).toLocaleString() : "Not set"}</dd></div>
+                <div><dt className="text-slate-500">Resolution due</dt><dd className="mt-1 font-medium">{ticket.resolution_due_at ? new Date(ticket.resolution_due_at).toLocaleString() : "Not set"}</dd></div>
               </dl>
               {latestTriage ? (
                 <div className="mt-4 border-t border-slate-200 pt-4 text-sm">
@@ -406,8 +413,38 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                   <p className="mt-1 text-slate-600">{latestTriage.summary}</p>
                   <p className="mt-3 font-medium">Suggested action</p>
                   <p className="mt-1 text-slate-600">{latestTriage.suggested_action}</p>
+                  <p className="mt-3 font-medium">Knowledge sources</p>
+                  {latestTriage.knowledge_sources?.length ? (
+                    <div className="mt-2 space-y-2">
+                      {latestTriage.knowledge_sources.map((source) => (
+                        <div key={source.id} className="rounded-md border border-slate-200 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium text-slate-800">{source.title}</p>
+                            <span className="font-mono text-xs text-slate-500">score {source.score}</span>
+                          </div>
+                          <p className="mt-1 text-slate-600">{source.excerpt}</p>
+                          {source.matched_terms.length ? <p className="mt-2 text-xs text-slate-500">Matched {source.matched_terms.join(", ")}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="mt-1 text-slate-500">No workspace source influenced this result.</p>}
                 </div>
               ) : <p className="mt-4 text-sm text-slate-500">No AI triage result yet.</p>}
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <h2 className="font-display text-lg font-semibold">Routing history</h2>
+              <div className="mt-3 space-y-2">
+                {routingExecutions.length === 0 ? <p className="text-sm text-slate-500">No routing rules have run on this ticket.</p> : routingExecutions.map((execution) => (
+                  <div key={execution.id} className="rounded-md border border-slate-200 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={execution.matched ? "font-medium text-teal-700" : "font-medium text-slate-500"}>{execution.matched ? "Matched" : "Skipped"}</span>
+                      <span className="font-mono text-xs text-slate-500">{new Date(execution.created_at).toLocaleString()}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">{Object.keys(execution.actions_applied).length ? JSON.stringify(execution.actions_applied) : "No actions applied"}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white p-5">
@@ -506,3 +543,4 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     </section>
   );
 }
+

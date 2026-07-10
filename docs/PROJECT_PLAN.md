@@ -221,9 +221,10 @@ Replies should become more accurate through workspace knowledge, and ticket owne
 
 ### Frontend Work
 
-- Add owner/admin knowledge management, routing rule management, and agent-visible source references on ticket/reply workflows.
-- Add SLA status visibility to inbox filters and dashboard surfaces.
-- Deploy M9 backend changes, apply the staging migration, and verify the full flow against Cloud Run and Vercel before marking M9 complete.
+- Implemented owner/admin knowledge management, routing rule management, and workspace SLA settings in the dashboard settings area.
+- Added agent-visible knowledge source references, routing execution history, SLA due dates, and SLA queue filtering.
+- Frontend typecheck and production build pass locally.
+- Deploy M9 backend/frontend changes, apply the staging migration, and verify the full flow against Cloud Run and Vercel before marking M9 complete.
 ## Later Milestones
 
 ### Knowledge and Automation
@@ -249,6 +250,7 @@ Replies should become more accurate through workspace knowledge, and ticket owne
 - Confirm deployed CORS origins.
 - Confirm Cloud Run task routes, Pub/Sub push subscriptions, and Cloud Scheduler jobs remain healthy after each staging deploy.
 - Run full end-to-end staging test.
+
 
 
 

@@ -12,6 +12,9 @@ export type TicketListItem = {
   assigned_to_user_id: string | null;
   triage_status: string;
   triage_error_message: string | null;
+  first_review_due_at: string | null;
+  resolution_due_at: string | null;
+  sla_status: string;
   received_at: string;
   updated_at: string;
 };
@@ -43,20 +46,36 @@ export type TicketEvent = {
   created_at: string;
 };
 
+export type KnowledgeReference = {
+  id: string;
+  title: string;
+  source_type: string;
+  score: number;
+  matched_terms: string[];
+  excerpt: string;
+};
+
 export type AITriageResult = {
   id: string;
   organization_id: string;
   ticket_id: string;
   model_provider: string;
   model_name: string;
+  prompt_version: string;
+  schema_version: string;
+  latency_ms: number | null;
+  job_run_id: string | null;
   category: string;
   priority: string;
   sentiment: string;
   summary: string;
   suggested_action: string;
   draft_reply: string;
+  confidence_score: number;
+  reasoning: string;
   requires_human_review: boolean;
   validation_status: string;
+  knowledge_sources: KnowledgeReference[];
   created_at: string;
 };
 
@@ -191,6 +210,69 @@ export type CollaborationLock = {
   locked_by_user_id: string;
   mode: string;
   expires_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KnowledgeSource = {
+  id: string;
+  organization_id: string;
+  title: string;
+  body: string;
+  source_type: string;
+  status: string;
+  owner_user_id: string;
+  effective_from: string | null;
+  effective_until: string | null;
+  source_metadata: Record<string, unknown>;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RoutingRule = {
+  id: string;
+  organization_id: string;
+  name: string;
+  priority_order: number;
+  is_active: boolean;
+  conditions: Record<string, unknown>;
+  actions: Record<string, unknown>;
+  created_by_user_id: string;
+  updated_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RoutingRuleTestResult = {
+  matched: boolean;
+  matched_conditions: string[];
+  actions_preview: Record<string, unknown>;
+};
+
+export type RoutingRuleExecution = {
+  id: string;
+  organization_id: string;
+  routing_rule_id: string;
+  ticket_id: string;
+  matched: boolean;
+  actions_applied: Record<string, unknown>;
+  created_at: string;
+};
+
+export type WorkspaceSettings = {
+  id: string;
+  organization_id: string;
+  default_reply_signature: string;
+  auto_triage_enabled: boolean;
+  draft_requires_approval: boolean;
+  sync_enabled: boolean;
+  draft_creation_enabled: boolean;
+  pilot_feedback_contact: string | null;
+  business_timezone: string;
+  business_hours: Record<string, { start?: string; end?: string }>;
+  first_review_target_minutes: number;
+  resolution_target_minutes: number;
   created_at: string;
   updated_at: string;
 };

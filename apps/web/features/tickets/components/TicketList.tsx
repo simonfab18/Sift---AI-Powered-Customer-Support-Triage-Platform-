@@ -5,6 +5,17 @@ import { TicketPriorityBadge } from "./TicketPriorityBadge";
 import { TicketStatusBadge } from "./TicketStatusBadge";
 import type { TicketListItem } from "../types";
 
+const slaTone: Record<string, string> = {
+  on_track: "bg-teal-50 text-teal-700",
+  warning: "bg-amber-50 text-amber-700",
+  breached: "bg-rose-50 text-rose-700",
+  paused: "bg-slate-100 text-slate-600",
+};
+
+function SlaBadge({ status }: { status: string }) {
+  return <span className={`rounded-md px-2 py-1 text-xs font-medium capitalize ${slaTone[status] ?? "bg-slate-100 text-slate-600"}`}>{status.replaceAll("_", " ")}</span>;
+}
+
 type TicketListProps = {
   tickets: TicketListItem[];
   selectedIds?: Set<string>;
@@ -37,6 +48,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
               <th className="px-4 py-3">Category</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">AI state</th>
+              <th className="px-4 py-3">SLA</th>
               <th className="px-4 py-3">Received</th>
             </tr>
           </thead>
@@ -61,6 +73,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
                 <td className="px-4 py-3 text-slate-600">{ticket.category.replaceAll("_", " ")}</td>
                 <td className="px-4 py-3"><TicketStatusBadge status={ticket.status} /></td>
                 <td className="px-4 py-3 font-mono text-xs text-slate-500">{ticket.triage_status?.replaceAll("_", " ") ?? "N/A"}</td>
+                <td className="px-4 py-3"><SlaBadge status={ticket.sla_status ?? "on_track"} /></td>
                 <td className="px-4 py-3 font-mono text-xs text-slate-500">{new Date(ticket.received_at).toLocaleString()}</td>
               </tr>
             ))}
@@ -91,7 +104,9 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
               <div className="mt-3 flex flex-wrap gap-2">
                 <TicketPriorityBadge priority={ticket.priority} />
                 <TicketStatusBadge status={ticket.status} />
+                <SlaBadge status={ticket.sla_status ?? "on_track"} />
               </div>
+              {ticket.first_review_due_at ? <p className="mt-2 text-xs text-slate-500">Review due {new Date(ticket.first_review_due_at).toLocaleString()}</p> : null}
             </div>
           </div>
         ))}
@@ -99,3 +114,4 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
     </div>
   );
 }
+

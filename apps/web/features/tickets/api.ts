@@ -6,14 +6,19 @@ import type {
   InternalNote,
   InternalNoteEdit,
   InternalNoteMention,
+  KnowledgeSource,
   MetricsOverview,
   ReplySuggestion,
   ResponseTemplate,
+  RoutingRule,
+  RoutingRuleExecution,
+  RoutingRuleTestResult,
   SavedView,
   TemplateInsertResult,
   Ticket,
   TicketEvent,
   TicketListItem,
+  WorkspaceSettings,
 } from "./types";
 
 function getApiBaseUrl() {
@@ -62,8 +67,15 @@ export async function getMetricsOverview(organizationId: string, accessToken: st
   return ticketApiFetch<MetricsOverview>(`/v1/orgs/${organizationId}/metrics/overview`, accessToken);
 }
 
-export async function getTickets(organizationId: string, accessToken: string): Promise<TicketListItem[]> {
-  return ticketApiFetch<TicketListItem[]>(`/v1/orgs/${organizationId}/tickets`, accessToken);
+export async function getTickets(
+  organizationId: string,
+  accessToken: string,
+  filters: { sla_status?: string } = {},
+): Promise<TicketListItem[]> {
+  const params = new URLSearchParams();
+  if (filters.sla_status && filters.sla_status !== "all") params.set("sla_status", filters.sla_status);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return ticketApiFetch<TicketListItem[]>(`/v1/orgs/${organizationId}/tickets${query}`, accessToken);
 }
 
 export async function getTicket(organizationId: string, ticketId: string, accessToken: string): Promise<Ticket> {
@@ -225,4 +237,146 @@ export async function acquireCollaborationLock(
 
 export async function releaseCollaborationLock(organizationId: string, accessToken: string, lockId: string): Promise<void> {
   return ticketApiFetch<void>(`/v1/orgs/${organizationId}/collaboration-locks/${lockId}`, accessToken, { method: "DELETE" });
+}
+
+export async function getKnowledgeSources(
+  organizationId: string,
+  accessToken: string,
+  includeArchived = false,
+): Promise<KnowledgeSource[]> {
+  const query = includeArchived ? "?include_archived=true" : "";
+  return ticketApiFetch<KnowledgeSource[]>(`/v1/orgs/${organizationId}/knowledge${query}`, accessToken);
+}
+
+export async function createKnowledgeSource(
+  organizationId: string,
+  accessToken: string,
+  payload: {
+    title: string;
+    body: string;
+    source_type: string;
+    effective_from?: string | null;
+    effective_until?: string | null;
+    source_metadata?: Record<string, unknown>;
+  },
+): Promise<KnowledgeSource> {
+  return ticketApiFetch<KnowledgeSource>(`/v1/orgs/${organizationId}/knowledge`, accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateKnowledgeSource(
+  organizationId: string,
+  accessToken: string,
+  sourceId: string,
+  payload: Partial<{
+    title: string;
+    body: string;
+    source_type: string;
+    status: string;
+    effective_from: string | null;
+    effective_until: string | null;
+    source_metadata: Record<string, unknown>;
+  }>,
+): Promise<KnowledgeSource> {
+  return ticketApiFetch<KnowledgeSource>(`/v1/orgs/${organizationId}/knowledge/${sourceId}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function archiveKnowledgeSource(
+  organizationId: string,
+  accessToken: string,
+  sourceId: string,
+): Promise<KnowledgeSource> {
+  return ticketApiFetch<KnowledgeSource>(`/v1/orgs/${organizationId}/knowledge/${sourceId}/archive`, accessToken, {
+    method: "POST",
+  });
+}
+
+export async function getRoutingRules(organizationId: string, accessToken: string): Promise<RoutingRule[]> {
+  return ticketApiFetch<RoutingRule[]>(`/v1/orgs/${organizationId}/routing-rules`, accessToken);
+}
+
+export async function createRoutingRule(
+  organizationId: string,
+  accessToken: string,
+  payload: {
+    name: string;
+    priority_order: number;
+    is_active: boolean;
+    conditions: Record<string, unknown>;
+    actions: Record<string, unknown>;
+  },
+): Promise<RoutingRule> {
+  return ticketApiFetch<RoutingRule>(`/v1/orgs/${organizationId}/routing-rules`, accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateRoutingRule(
+  organizationId: string,
+  accessToken: string,
+  ruleId: string,
+  payload: Partial<{
+    name: string;
+    priority_order: number;
+    is_active: boolean;
+    conditions: Record<string, unknown>;
+    actions: Record<string, unknown>;
+  }>,
+): Promise<RoutingRule> {
+  return ticketApiFetch<RoutingRule>(`/v1/orgs/${organizationId}/routing-rules/${ruleId}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function testRoutingRule(
+  organizationId: string,
+  accessToken: string,
+  ruleId: string,
+  sample: Record<string, unknown>,
+): Promise<RoutingRuleTestResult> {
+  return ticketApiFetch<RoutingRuleTestResult>(`/v1/orgs/${organizationId}/routing-rules/${ruleId}/test`, accessToken, {
+    method: "POST",
+    body: JSON.stringify({ sample }),
+  });
+}
+
+export async function getTicketRoutingExecutions(
+  organizationId: string,
+  ticketId: string,
+  accessToken: string,
+): Promise<RoutingRuleExecution[]> {
+  return ticketApiFetch<RoutingRuleExecution[]>(`/v1/orgs/${organizationId}/routing-rules/tickets/${ticketId}/executions`, accessToken);
+}
+
+export async function getWorkspaceSettings(organizationId: string, accessToken: string): Promise<WorkspaceSettings> {
+  return ticketApiFetch<WorkspaceSettings>(`/v1/orgs/${organizationId}/workspace-settings`, accessToken);
+}
+
+export async function updateWorkspaceSettings(
+  organizationId: string,
+  accessToken: string,
+  payload: Partial<{
+    default_reply_signature: string;
+    auto_triage_enabled: boolean;
+    draft_requires_approval: boolean;
+    sync_enabled: boolean;
+    draft_creation_enabled: boolean;
+    pilot_feedback_contact: string | null;
+    business_timezone: string;
+    business_hours: Record<string, { start?: string; end?: string }>;
+    first_review_target_minutes: number;
+    resolution_target_minutes: number;
+  }>,
+): Promise<WorkspaceSettings> {
+  return ticketApiFetch<WorkspaceSettings>(`/v1/orgs/${organizationId}/workspace-settings`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
