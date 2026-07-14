@@ -47,6 +47,24 @@ const migrationChecklist = [
   "Keep rollback commands and the previous frontend/backend deployments available until smoke checks pass.",
 ];
 
+type PilotReadinessItem = {
+  label: string;
+  status: "ready" | "attention" | "review";
+  detail: string;
+};
+
+function readinessTone(status: PilotReadinessItem["status"]) {
+  if (status === "ready") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (status === "review") return "border-sky-200 bg-sky-50 text-sky-800";
+  return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+function readinessLabel(status: PilotReadinessItem["status"]) {
+  if (status === "ready") return "Ready";
+  if (status === "review") return "Review";
+  return "Needs attention";
+}
+
 function ToggleRow({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
     <label className="flex items-start justify-between gap-4 rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -127,6 +145,52 @@ export function ReleaseReadinessSettings() {
     [syncEnabled, autoTriageEnabled, draftCreationEnabled, draftRequiresApproval],
   );
 
+  const pilotReadinessItems = useMemo<PilotReadinessItem[]>(() => [
+    {
+      label: "Gmail sync",
+      status: syncEnabled ? "ready" : "attention",
+      detail: syncEnabled ? "Imports, push sync, and fallback sync are allowed for this workspace." : "Turn Gmail sync on before using a pilot support inbox.",
+    },
+    {
+      label: "AI triage",
+      status: autoTriageEnabled && !aiUsage?.paused_for_today ? "ready" : autoTriageEnabled ? "review" : "attention",
+      detail: !autoTriageEnabled
+        ? "Automatic AI triage is paused for this workspace."
+        : aiUsage?.paused_for_today
+          ? "AI is paused for today by the free pilot cap; agents can still review tickets manually."
+          : "Automatic triage is allowed while free-tier quota is available.",
+    },
+    {
+      label: "Approval and drafts",
+      status: draftCreationEnabled && draftRequiresApproval ? "ready" : "attention",
+      detail: draftCreationEnabled && draftRequiresApproval
+        ? "Approved replies can create Gmail drafts, and human approval remains required."
+        : "Keep draft creation enabled and approval required for the pilot workflow.",
+    },
+    {
+      label: "Direct send posture",
+      status: directSendEnabled ? "review" : "ready",
+      detail: directSendEnabled ? "Direct send is enabled. Confirm this is only for approved smoke testing." : "Live sending stays off; agents create drafts instead.",
+    },
+    {
+      label: "Pilot contact",
+      status: pilotFeedbackContact.trim() ? "ready" : "attention",
+      detail: pilotFeedbackContact.trim() ? `Pilot support contact is ${pilotFeedbackContact.trim()}.` : "Add a support contact so pilot users know where to report issues.",
+    },
+    {
+      label: "Attachment AI",
+      status: attachmentAiProcessingEnabled ? "review" : "ready",
+      detail: attachmentAiProcessingEnabled ? "Attachment AI processing is opted in for future AI features." : "Stored attachment contents are not available to AI processing.",
+    },
+    {
+      label: "Data controls",
+      status: "ready",
+      detail: "Owner/admin export and deletion-request controls are available from this page.",
+    },
+  ], [aiUsage?.paused_for_today, attachmentAiProcessingEnabled, autoTriageEnabled, directSendEnabled, draftCreationEnabled, draftRequiresApproval, pilotFeedbackContact, syncEnabled]);
+
+  const pilotAttentionCount = pilotReadinessItems.filter((item) => item.status === "attention").length;
+  const pilotReviewCount = pilotReadinessItems.filter((item) => item.status === "review").length;
   async function saveFlags() {
     const context = await getContext();
     if (!context) {
@@ -254,6 +318,29 @@ export function ReleaseReadinessSettings() {
           </dl>
         </aside>
       </div>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="font-display text-lg font-semibold">Pilot launch checklist</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">A workspace-level safety check before pointing a real Gmail support inbox at the pilot.</p>
+          </div>
+          <span className={`w-fit rounded-md px-2 py-1 text-xs font-medium ${pilotAttentionCount > 0 ? "bg-amber-100 text-amber-800" : pilotReviewCount > 0 ? "bg-sky-100 text-sky-800" : "bg-emerald-100 text-emerald-700"}`}>
+            {pilotAttentionCount > 0 ? `${pilotAttentionCount} attention` : pilotReviewCount > 0 ? `${pilotReviewCount} review` : "Pilot-ready"}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {pilotReadinessItems.map((item) => (
+            <article key={item.label} className={`rounded-md border p-4 text-sm ${readinessTone(item.status)}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-medium">{item.label}</h3>
+                <span className="rounded-md bg-white/80 px-2 py-1 text-xs font-medium">{readinessLabel(item.status)}</span>
+              </div>
+              <p className="mt-2 leading-6">{item.detail}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5">
         <h2 className="font-display text-lg font-semibold">Lifecycle communications</h2>
