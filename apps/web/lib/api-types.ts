@@ -63,6 +63,61 @@ export type JobRun = {
   created_at: string;
 };
 
+export type OperationsJob = {
+  id: string;
+  organization_id: string;
+  job_type: string;
+  queue_name: string;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  retryable: boolean;
+  correlation_id: string | null;
+  related_resource_type: string | null;
+  related_resource_id: string | null;
+  error_class: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  next_retry_at: string | null;
+  duration_ms: number | null;
+  alert_owner: string | null;
+  runbook_url: string | null;
+  job_metadata: Record<string, unknown>;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+};
+
+export type OperationsFailureList = {
+  jobs: OperationsJob[];
+};
+
+export type OperationsRetryResult = {
+  original_job: OperationsJob;
+  retry_job: OperationsJob;
+};
+
+export type SyncConnectionHealth = {
+  connection_id: string;
+  gmail_email: string;
+  status: string;
+  sync_status: string | null;
+  watch_status: string | null;
+  consecutive_sync_failures: number;
+  last_successful_sync_at: string | null;
+  last_sync_started_at: string | null;
+  sync_error_code: string | null;
+  sync_error_message: string | null;
+  degraded: boolean;
+};
+
+export type SyncHealth = {
+  active_connections: number;
+  degraded_connections: number;
+  disconnected_connections: number;
+  stale_connections: number;
+  connections: SyncConnectionHealth[];
+};
 export type Member = {
   id: string;
   organization_id: string;

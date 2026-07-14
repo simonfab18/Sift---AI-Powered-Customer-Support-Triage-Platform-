@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from "@/lib/config";
-import type { GmailConnection, JobRun, MailImportRule, MeResponse, Organization, Member, OrganizationDeletionRequest, OrganizationExport } from "@/lib/api-types";
+import type { GmailConnection, JobRun, MailImportRule, MeResponse, Organization, Member, OperationsFailureList, OperationsRetryResult, OrganizationDeletionRequest, OrganizationExport, SyncHealth } from "@/lib/api-types";
 
 function toApiErrorMessage(errorText: string, status: number) {
   try {
@@ -119,6 +119,20 @@ export function getRecentImports(accessToken: string, organizationId: string) {
 export function getJobRun(accessToken: string, organizationId: string, jobId: string) {
   return apiFetch<JobRun>(`/v1/orgs/${organizationId}/jobs/${jobId}`, accessToken);
 }
+export function getOperationsFailures(accessToken: string, organizationId: string, limit = 10) {
+  return apiFetch<OperationsFailureList>(`/v1/orgs/${organizationId}/operations/failures?limit=${limit}`, accessToken);
+}
+
+export function getSyncHealth(accessToken: string, organizationId: string) {
+  return apiFetch<SyncHealth>(`/v1/orgs/${organizationId}/operations/sync-health`, accessToken);
+}
+
+export function retryOperationsJob(accessToken: string, organizationId: string, jobId: string) {
+  return apiFetch<OperationsRetryResult>(`/v1/orgs/${organizationId}/operations/jobs/${jobId}/retry`, accessToken, {
+    method: "POST",
+  });
+}
+
 
 export function getMembers(accessToken: string, organizationId: string) {
   return apiFetch<Member[]>(`/v1/orgs/${organizationId}/members`, accessToken);
