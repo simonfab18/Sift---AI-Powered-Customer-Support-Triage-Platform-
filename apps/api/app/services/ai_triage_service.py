@@ -24,7 +24,7 @@ from app.services.reply_suggestion_service import create_ai_reply_suggestion_fro
 from app.services.ticket_service import get_ticket_or_404, write_ticket_event
 from app.services.ticket_lifecycle_service import transition_ticket_status
 
-PROMPT_VERSION = "triage-v1"
+PROMPT_VERSION = "triage-v2"
 SCHEMA_VERSION = "triage-output-v1"
 SYSTEM_TRIAGE_ACTOR = AuthenticatedUser(id="system:ai-triage", email=None)
 

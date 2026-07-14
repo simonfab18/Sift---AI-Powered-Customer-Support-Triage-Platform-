@@ -63,14 +63,34 @@ Message:
 {knowledge_block}
 Classification rules:
 - category must be one of: order_status, refund, return, damaged_item, billing, technical_issue, account_access, product_question, complaint, spam, other.
-- priority critical: safety risk, fraud, legal threat, account takeover, severe outage, or urgent high-impact complaint.
-- priority high: refund/replacement/cancellation request, angry customer, damaged item, chargeback, delivery failure, or time-sensitive issue.
-- priority medium: normal support request requiring action.
-- priority low: simple informational question or low urgency.
-- sentiment angry: hostile, threatening, or extremely frustrated.
-- sentiment negative: dissatisfied or concerned.
-- sentiment neutral: factual or routine.
-- sentiment positive: appreciative or happy.
+- Do not use category other when any named category is a reasonable fit. Use other only for messages unrelated to the business, unclear after reading subject and body, or outside these categories.
+- category order_status: shipping, delivery, tracking, missing package, delayed order, order confirmation, address change before shipment, or "where is my order".
+- category refund: refund, cancellation with money back, credit, compensation, charge reversal, overcharge refund, or money-back request.
+- category return: return request, exchange request, return label, wrong size/color, unwanted item, or return policy question.
+- category damaged_item: broken, defective, damaged, missing part, not working on arrival, or photo/evidence of damage.
+- category billing: invoice, payment failed, duplicate charge, chargeback, receipt, tax, payment method, subscription/payment issue.
+- category technical_issue: website/app checkout error, login page error not caused by forgotten credentials, integration failure, bug, or upload/download problem.
+- category account_access: cannot sign in, password reset, locked account, email/account change, suspected account takeover.
+- category product_question: sizing, compatibility, stock, features, ingredients/materials, warranty, or pre-purchase question.
+- category complaint: angry service complaint, escalation, bad experience, repeated unresolved issue, or manager/legal escalation that is not better classified above.
+- category spam: obvious ads, phishing, scams, unrelated solicitations, empty/nonsense mail, or malicious-looking content.
+- priority critical: safety risk, fraud, legal threat, account takeover, severe outage, chargeback/legal escalation, or urgent high-impact complaint.
+- priority high: refund/replacement/cancellation request, angry customer, damaged item, missing/delayed delivery with urgency, billing dispute, or time-sensitive issue.
+- priority medium: normal support request requiring action, including ordinary order status, return, product, technical, or account help.
+- priority low: simple informational question, thanks/follow-up with no action needed, or low urgency pre-purchase question.
+- Avoid defaulting to medium. Choose high when money, access, damage, delivery failure, cancellation, or strong frustration is involved. Choose low when no action or only simple information is needed.
+- sentiment angry: hostile, threatening, repeated frustration, all-caps anger, insults, legal threats, or explicit escalation.
+- sentiment negative: dissatisfied, worried, disappointed, blocked, delayed, confused in a problematic way, or requesting correction.
+- sentiment neutral: factual or routine with no clear emotion.
+- sentiment positive: appreciative, happy, complimentary, or satisfied.
+
+Examples:
+- "Where is my order? Tracking has not moved for 5 days" -> category order_status, priority medium, sentiment negative.
+- "I was charged twice, refund me now" -> category refund, priority high, sentiment angry or negative.
+- "The item arrived broken" -> category damaged_item, priority high, sentiment negative.
+- "I cannot log in to my account" -> category account_access, priority high if locked out/urgent, otherwise medium.
+- "Do you have this in blue?" -> category product_question, priority low, sentiment neutral.
+- "Your service is terrible and I want a manager" -> category complaint, priority high, sentiment angry.
 
 Human review must be true when:
 - priority is critical or high.

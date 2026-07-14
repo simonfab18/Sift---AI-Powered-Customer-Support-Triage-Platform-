@@ -4,6 +4,7 @@ from pydantic import ValidationError
 
 from app.integrations.gemini.client import GeminiQuotaExceededError
 from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketSentiment, TicketTriageStatus
+from app.integrations.gemini.prompts import build_triage_prompt
 from app.schemas.ai import TriageOutput
 
 
@@ -187,3 +188,31 @@ def test_triage_output_rejects_invalid_confidence_score() -> None:
                 "requires_human_review": True,
             }
         )
+
+def test_triage_prompt_discourages_other_and_medium_defaults() -> None:
+    prompt = build_triage_prompt(
+        customer_name=None,
+        customer_email="customer@example.com",
+        subject="I was charged twice",
+        message="Please refund the duplicate charge on my order.",
+    )
+
+    assert "Do not use category other when any named category is a reasonable fit" in prompt
+    assert "Avoid defaulting to medium" in prompt
+    assert "charged twice" in prompt
+    assert "category refund, priority high" in prompt
+
+
+def test_triage_prompt_contains_common_gmail_workflow_examples() -> None:
+    prompt = build_triage_prompt(
+        customer_name="Casey",
+        customer_email="casey@example.com",
+        subject="Package broken",
+        message="The item arrived broken and I need a replacement.",
+    )
+
+    assert "category order_status" in prompt
+    assert "category damaged_item" in prompt
+    assert "category account_access" in prompt
+    assert "Where is my order?" in prompt
+    assert "The item arrived broken" in prompt
