@@ -475,3 +475,9 @@ Status: Backend/frontend deployed; route smoke passed. AI provider smoke blocked
 - Vercel `/dashboard/settings/readiness`, `/dashboard/settings/gmail`, and `/dashboard/tickets` returned `200`.
 - Added UI follow-ups for attachment AI opt-in visibility, Gmail shared-source saved-vs-draft source display, sync/watch next-step guidance, and Gmail draft-created state.
 - Attempted five Gemini triage-v2 provider smoke prompts, but Gemini returned a credits/prepayment depletion error before classifications could be verified.
+## 2026-07-14 - M11 Gmail-first closure smoke
+
+- Confirmed signed-in Settings -> Readiness smoke in the stable Vercel app: Attachment AI processing starts default-off, can be enabled by owner/admin, saves, and persists after refresh.
+- Confirmed signed-in Gmail settings smoke in the stable Vercel app: Google Group/shared mailbox source editing behaves correctly with saved-source display separated from unsaved edits.
+- Rechecked Cloud Run staging after env repair: revision `sift-api-staging-00062-cll` serves 100% traffic, `/health/ready` returns 200, and the live OpenAPI schema exposes `attachment_ai_processing_enabled` and `direct_send_enabled` for workspace settings read/update.
+- M11 Gmail-first expansion is ready to move into pilot hardening. Real Gemini multi-email classification smoke remains pending until provider credits/quota are available.
