@@ -51,6 +51,12 @@ export type JobRun = {
   job_type: string;
   status: string;
   error_message: string | null;
+  error_code?: string | null;
+  retryable?: boolean;
+  next_retry_at?: string | null;
+  duration_ms?: number | null;
+  attempts?: number;
+  max_attempts?: number;
   job_metadata: Record<string, unknown>;
   started_at: string | null;
   finished_at: string | null;

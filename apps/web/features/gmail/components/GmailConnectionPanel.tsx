@@ -49,6 +49,61 @@ function formatDateTime(value?: string | null) {
 function formatJobTime(job: JobRun) {
   return formatDateTime(job.finished_at ?? job.started_at ?? job.created_at);
 }
+function jobConnectionId(job: JobRun) {
+  return typeof job.job_metadata.gmail_connection_id === "string" ? job.job_metadata.gmail_connection_id : null;
+}
+
+function formatDuration(ms?: number | null) {
+  if (typeof ms === "number" && Number.isFinite(ms)) {
+    if (ms < 1000) return `${ms} ms`;
+    const seconds = Math.round(ms / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return remainingSeconds ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  }
+  return null;
+}
+
+function elapsedSince(value?: string | null) {
+  if (!value) return null;
+  const started = new Date(value).getTime();
+  if (Number.isNaN(started)) return null;
+  const seconds = Math.max(0, Math.round((Date.now() - started) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+}
+
+function isLongRunningImport(job?: JobRun) {
+  if (!job || !["queued", "running"].includes(job.status)) return false;
+  const started = new Date(job.started_at ?? job.created_at).getTime();
+  if (Number.isNaN(started)) return false;
+  return Date.now() - started > 5 * 60 * 1000;
+}
+
+function importStatusTone(status: string) {
+  if (status === "succeeded") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "failed") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (status === "queued" || status === "running") return "border-sky-200 bg-sky-50 text-sky-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function importCounts(job?: JobRun) {
+  if (!job) return "No completed import yet";
+  const imported = String(job.job_metadata.imported_count ?? 0);
+  const skipped = String(job.job_metadata.skipped_count ?? 0);
+  return `${imported} imported, ${skipped} skipped`;
+}
+
+function importRuntime(job: JobRun) {
+  const duration = formatDuration(job.duration_ms);
+  if (duration) return duration;
+  if (job.status === "running") return elapsedSince(job.started_at ?? job.created_at);
+  if (job.status === "queued") return elapsedSince(job.created_at);
+  return null;
+}
 
 function isWatchExpiringSoon(value?: string | null) {
   if (!value) return false;
@@ -175,11 +230,20 @@ export function GmailConnectionPanel() {
   const activeImportByConnectionId = useMemo(() => {
     const active = new Map<string, JobRun>();
     for (const job of imports) {
-      const connectionId = typeof job.job_metadata.gmail_connection_id === "string" ? job.job_metadata.gmail_connection_id : null;
+      const connectionId = jobConnectionId(job);
       if (!connectionId || !["queued", "running"].includes(job.status)) continue;
       if (!active.has(connectionId)) active.set(connectionId, job);
     }
     return active;
+  }, [imports]);
+  const latestImportByConnectionId = useMemo(() => {
+    const latest = new Map<string, JobRun>();
+    for (const job of imports) {
+      const connectionId = jobConnectionId(job);
+      if (!connectionId) continue;
+      if (!latest.has(connectionId)) latest.set(connectionId, job);
+    }
+    return latest;
   }, [imports]);
   const hasActiveImports = activeImportByConnectionId.size > 0;
 
@@ -292,7 +356,8 @@ export function GmailConnectionPanel() {
 
     try {
       const job = await queueGmailSync(accessToken, organizationId, connectionId);
-      setMessage(job.status === "queued" || job.status === "running" ? "Import is running for this inbox." : `Import ${job.status}.`);
+      setImports((current) => [job, ...current.filter((item) => item.id !== job.id)]);
+      setMessage(job.status === "queued" || job.status === "running" ? "Import is running for this inbox. Buttons stay locked until it finishes." : `Import ${job.status}.`);
       await loadConnections();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to start Gmail import.");
@@ -323,7 +388,8 @@ export function GmailConnectionPanel() {
 
     try {
       const job = await queueGmailSync(accessToken, organizationId, connectionId);
-      setMessage(`Queued import job ${job.id}. Status: ${job.status}.`);
+      setImports((current) => [job, ...current.filter((item) => item.id !== job.id)]);
+      setMessage(`Queued import job ${job.id}. Buttons stay locked until it finishes.`);
       await loadConnections();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to queue Gmail import.");
@@ -361,7 +427,10 @@ export function GmailConnectionPanel() {
             const draftRule = draftRules[connection.id] ?? rulesByConnectionId.get(connection.id);
             const draftMeta = draftConnectionMeta[connection.id] ?? { inbox_type: connection.inbox_type ?? "individual", shared_address: connection.shared_address ?? "", channel_notes: connection.channel_notes ?? "" };
             const activeImport = activeImportByConnectionId.get(connection.id);
+            const latestImport = latestImportByConnectionId.get(connection.id);
             const importIsBusy = Boolean(activeImport) || syncingConnectionId === connection.id || queueingConnectionId === connection.id;
+            const activeImportRuntime = activeImport ? importRuntime(activeImport) : null;
+            const latestImportRuntime = latestImport ? importRuntime(latestImport) : null;
             const health = connectionHealth(connection, activeImport);
             const savedInboxType = connection.inbox_type ?? "individual";
             const sourceLabel = savedInboxType === "google_group" ? "Google Group" : savedInboxType === "shared_mailbox" ? "Shared mailbox" : "Individual inbox";
@@ -404,8 +473,24 @@ export function GmailConnectionPanel() {
                       <p>Failures: {connection.consecutive_sync_failures ?? 0}</p>
                     </div>
                     {activeImport ? (
-                      <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-700">
-                        Import job {activeImport.id} is {activeImport.status}. Import buttons stay locked until this clears.
+                      <div className={`mt-3 rounded-md border p-3 text-xs ${isLongRunningImport(activeImport) ? "border-amber-200 bg-amber-50 text-amber-900" : "border-sky-200 bg-sky-50 text-sky-700"}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium">Import {activeImport.status}</span>
+                          {activeImportRuntime ? <span>{activeImportRuntime}</span> : null}
+                        </div>
+                        <p className="mt-1">Buttons stay locked for this inbox until the job finishes. The page refreshes while it is active.</p>
+                        {isLongRunningImport(activeImport) ? <p className="mt-1 font-medium">This import is taking longer than usual. If it stays here, refresh this page; the backend will mark stale jobs so you can retry.</p> : null}
+                        <span className="mt-1 block text-slate-500">Job {activeImport.id}</span>
+                      </div>
+                    ) : latestImport ? (
+                      <div className={`mt-3 rounded-md border p-3 text-xs ${importStatusTone(latestImport.status)}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-medium capitalize">Last import {latestImport.status}</span>
+                          <span>{formatJobTime(latestImport)}</span>
+                        </div>
+                        <p className="mt-1">{importCounts(latestImport)}{latestImportRuntime ? ` / ${latestImportRuntime}` : ""}</p>
+                        {latestImport.error_message ? <p className="mt-1 font-medium">{latestImport.error_message}</p> : null}
+                        <span className="mt-1 block opacity-80">Job {latestImport.id}</span>
                       </div>
                     ) : null}
                     {connection.sync_error_message || connection.watch_error ? (
@@ -497,20 +582,20 @@ export function GmailConnectionPanel() {
         {imports.length === 0 ? <p className="mt-3 text-sm text-slate-600">No imports yet.</p> : null}
         <div className="mt-3 space-y-2">
           {imports.map((job) => {
-            const connection = connections.find((item) => item.id === job.job_metadata.gmail_connection_id);
-            const statusClass = job.status === "failed" ? "text-rose-700" : job.status === "succeeded" ? "text-emerald-700" : "text-sky-700";
+            const connection = connections.find((item) => item.id === jobConnectionId(job));
+            const runtime = importRuntime(job);
             return (
-              <div key={job.id} className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+              <div key={job.id} className={`rounded-md border p-3 text-xs ${importStatusTone(job.status)}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className={`font-medium ${statusClass}`}>{job.status}</span>
-                  <span className="text-slate-500">{formatJobTime(job)}</span>
+                  <span className="font-medium capitalize">{job.status}</span>
+                  <span>{formatJobTime(job)}</span>
                 </div>
                 <div className="mt-1">
                   {connection ? inboxName(connection) : "Gmail inbox"}
-                  {" - "}imported {String(job.job_metadata.imported_count ?? 0)}, skipped {String(job.job_metadata.skipped_count ?? 0)}
+                  {" - "}{importCounts(job)}{runtime ? ` / ${runtime}` : ""}
                 </div>
-                {job.error_message ? <p className="mt-1 text-rose-700">{job.error_message}</p> : null}
-                <span className="mt-1 block text-slate-500">Job {job.id}</span>
+                {job.error_message ? <p className="mt-1 font-medium">{job.error_message}</p> : null}
+                <span className="mt-1 block opacity-80">Job {job.id}</span>
               </div>
             );
           })}
