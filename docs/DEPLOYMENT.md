@@ -13,6 +13,7 @@ Render should stay online as a fallback until Cloud Run staging is verified end 
 - Database: Supabase Postgres using the Session Pooler connection string.
 - Auth: Supabase Auth.
 - Gmail: Google OAuth app with environment-specific callback URLs.
+- Private attachment storage: Google Cloud Storage bucket per environment when enabled.
 - Secrets: staging can temporarily use Cloud Run environment variables; production secrets should move to Secret Manager.
 
 Redis and Celery are not part of the staging or production architecture.
@@ -62,21 +63,22 @@ Cloud Run runs the same API container. Background work is delivered as authentic
 Create or confirm these resources for each environment:
 
 1. Build and deploy the backend image to Cloud Run.
-2. Create Pub/Sub topics for Gmail import, Gmail history sync, AI triage, and watch renewal tasks.
-3. Create Pub/Sub push subscriptions for each task topic.
-4. Configure each push subscription with OIDC authentication using the task Pub/Sub invoker service account.
-5. Set each push endpoint to the matching Cloud Run route:
+2. Create a private Google Cloud Storage bucket if `ATTACHMENT_STORAGE_BACKEND=gcs`.
+3. Create Pub/Sub topics for Gmail import, Gmail history sync, AI triage, and watch renewal tasks.
+4. Create Pub/Sub push subscriptions for each task topic.
+5. Configure each push subscription with OIDC authentication using the task Pub/Sub invoker service account.
+6. Set each push endpoint to the matching Cloud Run route:
    - `/v1/tasks/gmail/import`
    - `/v1/tasks/gmail/history-sync`
    - `/v1/tasks/ai/triage`
    - `/v1/tasks/gmail/watch-renewal`
-6. Create Cloud Scheduler jobs for:
+7. Create Cloud Scheduler jobs for:
    - `/v1/tasks/scheduler/fallback-sync`
    - `/v1/tasks/scheduler/watch-renewals`
-7. Configure Scheduler OIDC with the scheduler invoker service account.
-8. Update the Gmail Pub/Sub push subscription endpoint to the new Cloud Run webhook URL:
+8. Configure Scheduler OIDC with the scheduler invoker service account.
+9. Update the Gmail Pub/Sub push subscription endpoint to the new Cloud Run webhook URL:
    - `/v1/webhooks/google/gmail`
-9. Update Vercel `NEXT_PUBLIC_API_BASE_URL` to the Cloud Run API URL after staging verification.
+10. Update Vercel `NEXT_PUBLIC_API_BASE_URL` to the Cloud Run API URL after staging verification.
 
 The public Cloud Run service must remain reachable by Vercel, Google OAuth callbacks, and Gmail webhook delivery. Internal task and scheduler routes reject requests without valid Google service-account OIDC tokens.
 
@@ -103,7 +105,8 @@ Before a real launch:
 - Confirm `GOOGLE_REDIRECT_URI` exactly matches the Cloud Run callback URL.
 - Set `TASK_QUEUE_BACKEND=pubsub` in staging and production.
 - Configure all task topic env vars and OIDC service-account/audience env vars.
-- Restrict `API_CORS_ORIGINS` to the deployed frontend domain.
+- If attachment storage is enabled, set `ATTACHMENT_STORAGE_BACKEND=gcs`, `ATTACHMENT_STORAGE_BUCKET`, and bucket IAM for the Cloud Run runtime service account.
+- Restrict `API_CORS_ORIGINS` to the deployed frontend domain. Cloud Run staging also allows generated Vercel preview origins through a staging-only CORS regex so preview deployments can call the staging API.
 - Run `alembic upgrade head` before starting the deployed API.
 - Keep Render running until Cloud Run staging passes the smoke suite.
 
@@ -168,6 +171,36 @@ Database rollback:
 2. If rollback is required, back up the target database first.
 3. Run the specific Alembic downgrade only after confirming data-loss risk.
 4. Redeploy API versions compatible with the downgraded schema.
+
+## Backup, rollback, and soak drills
+
+Run these drills in staging before any real pilot inbox is connected. Record completed runs in `docs/STAGING_DRILL_LOG.md`.
+
+Backup/restore drill:
+
+1. Export a staging Supabase backup or provider-managed restore point.
+2. Restore it into a temporary staging-restore database, not the active staging database.
+3. Point a temporary API environment or local API process at the restored database.
+4. Confirm migrations are at the expected head and core records load: organizations, members, Gmail connections, tickets, attachments, approvals, audit logs, and job runs.
+5. Delete the temporary restore database after verification and record the backup timestamp, restore target, and result.
+
+Rollback drill:
+
+1. Record the current Cloud Run revision, Vercel deployment, migration head, Pub/Sub subscription targets, and Scheduler jobs.
+2. Promote or redeploy the previous known-good backend revision in staging.
+3. Promote the previous known-good Vercel deployment or verify the current frontend remains compatible.
+4. Confirm `/health`, `/health/ready`, `/v1/status`, login, ticket list, Gmail settings, and attachment download behavior.
+5. Restore traffic to the latest known-good revision and record the rollback duration and any manual fixes.
+
+Staging soak:
+
+1. Use at least two connected staging Gmail inboxes.
+2. Send test emails to each inbox, including one with an allowed attachment.
+3. Confirm Gmail push/history sync creates tickets without duplicate imports.
+4. Confirm AI triage either succeeds or records a clean retryable quota failure when Gemini quota is exhausted.
+5. Approve a reply, create a Gmail draft, resolve the ticket, and review audit logs.
+6. Review Cloud Run, Pub/Sub, Scheduler, Supabase, and Vercel logs for repeated failures or retry storms.
+7. Record start/end time, inboxes used, created ticket IDs, draft IDs if available, and unresolved issues.
 
 ## M7 Staging Verification
 

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -11,14 +11,15 @@ from app.models.gmail_connection import GmailConnection
 from app.models.job_run import JobRun, JobRunStatus
 from app.models.mail_import_rule import MailImportRule
 from app.models.ticket import Ticket
+from app.models.ticket_attachment import TicketAttachment
 from app.services.gmail_token_service import refresh_connection_access_token
 from app.services.operations_service import ensure_job_defaults, mark_job_failed, mark_job_running, mark_job_succeeded
 from app.services.pilot_control_service import ensure_sync_enabled
 from app.services.rbac_service import require_membership
 from app.services.routing_rule_service import apply_routing_rules
 from app.services.sla_service import initialize_ticket_sla
-from app.services.workspace_settings_service import get_or_create_workspace_settings
 from app.services.ticket_service import get_or_create_customer, write_ticket_event
+from app.services.workspace_settings_service import get_or_create_workspace_settings
 
 
 def _active_connection_or_404(db: Session, organization_id: str, connection_id: str) -> GmailConnection:
@@ -56,6 +57,53 @@ def _ticket_exists(db: Session, organization_id: str, gmail_message_id: str) -> 
     )
 
 
+GMAIL_IMPORT_STALE_AFTER_MINUTES = 5
+ACTIVE_IMPORT_STATUSES = {JobRunStatus.QUEUED.value, JobRunStatus.RUNNING.value}
+
+
+def _mark_stale_import_job(job: JobRun) -> None:
+    mark_job_failed(job, TimeoutError("Gmail import job timed out before completion."))
+    job.error_code = "stale_running_import"
+    job.error_message = "Gmail import was left running and was marked stale. Start a new import to retry."
+    job.retryable = True
+
+
+def cleanup_stale_gmail_import_jobs(db: Session, organization_id: str, connection_id: str | None = None) -> int:
+    stale_cutoff = datetime.now(UTC) - timedelta(minutes=GMAIL_IMPORT_STALE_AFTER_MINUTES)
+    conditions = [
+        JobRun.organization_id == organization_id,
+        JobRun.job_type == "gmail_import",
+        JobRun.status.in_(ACTIVE_IMPORT_STATUSES),
+    ]
+    if connection_id is not None:
+        conditions.append(JobRun.related_resource_id == connection_id)
+    active_jobs = list(db.scalars(select(JobRun).where(*conditions).order_by(JobRun.created_at.desc())))
+    stale_count = 0
+    for job in active_jobs:
+        reference_time = job.started_at or job.created_at
+        if reference_time is not None and reference_time.tzinfo is None:
+            reference_time = reference_time.replace(tzinfo=UTC)
+        if reference_time is not None and reference_time < stale_cutoff:
+            _mark_stale_import_job(job)
+            stale_count += 1
+    db.flush()
+    return stale_count
+
+
+def get_active_gmail_import_job(db: Session, organization_id: str, connection_id: str) -> JobRun | None:
+    cleanup_stale_gmail_import_jobs(db, organization_id, connection_id)
+    return db.scalar(
+        select(JobRun)
+        .where(
+            JobRun.organization_id == organization_id,
+            JobRun.job_type == "gmail_import",
+            JobRun.related_resource_id == connection_id,
+            JobRun.status.in_(ACTIVE_IMPORT_STATUSES),
+        )
+        .order_by(JobRun.created_at.desc())
+    )
+
+
 def _create_ticket_from_gmail(
     db: Session,
     organization_id: str,
@@ -82,6 +130,23 @@ def _create_ticket_from_gmail(
     )
     db.add(ticket)
     db.flush()
+    for attachment in normalized.attachments:
+        db.add(
+            TicketAttachment(
+                organization_id=organization_id,
+                ticket_id=ticket.id,
+                gmail_connection_id=connection_id,
+                gmail_message_id=normalized.gmail_message_id,
+                gmail_attachment_id=attachment.gmail_attachment_id,
+                filename=attachment.filename,
+                mime_type=attachment.mime_type,
+                size_bytes=attachment.size_bytes,
+                content_disposition=attachment.content_disposition,
+                is_inline=attachment.is_inline,
+                policy_status=attachment.policy_status,
+                notes=attachment.notes,
+            )
+        )
     settings = get_or_create_workspace_settings(db, organization_id)
     initialize_ticket_sla(ticket, settings)
     apply_routing_rules(db, ticket)
@@ -129,6 +194,12 @@ def create_gmail_import_job(
     if not rule.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Import rule is not active")
 
+    active_job = get_active_gmail_import_job(db, organization_id, connection_id)
+    if active_job is not None:
+        db.commit()
+        db.refresh(active_job)
+        return active_job
+
     now = datetime.now(UTC)
     job = JobRun(
         organization_id=organization_id,
@@ -169,6 +240,8 @@ async def run_gmail_import_job(
     job = db.get(JobRun, job_id)
     if job is None or job.organization_id != organization_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job run not found")
+    if job.status in {JobRunStatus.SUCCEEDED.value, JobRunStatus.FAILED.value, JobRunStatus.CANCELED.value}:
+        return job
 
     ensure_job_defaults(
         job,
@@ -183,6 +256,7 @@ async def run_gmail_import_job(
     skipped_count = 0
     message_ids: list[str] = []
     created_ticket_ids: list[str] = []
+    message_errors: list[dict[str, str]] = []
     try:
         access_token, _ = await refresh_connection_access_token(db, connection, refresh_func=refresh_gmail_access_token)
 
@@ -198,7 +272,12 @@ async def run_gmail_import_job(
             if _ticket_exists(db, organization_id, message_id):
                 skipped_count += 1
                 continue
-            raw_message = await get_gmail_message(access_token, message_id)
+            try:
+                raw_message = await get_gmail_message(access_token, message_id)
+            except HTTPException as exc:
+                skipped_count += 1
+                message_errors.append({"message_id": message_id, "error": str(exc.detail)[:300]})
+                continue
             normalized = normalize_gmail_message(raw_message)
             if not normalized.gmail_message_id:
                 skipped_count += 1
@@ -219,6 +298,7 @@ async def run_gmail_import_job(
             "imported_count": imported_count,
             "skipped_count": skipped_count,
             "seen_count": len(message_ids),
+            "message_errors": message_errors[:10],
         }
         db.commit()
         for ticket_id in created_ticket_ids:
@@ -237,6 +317,7 @@ async def run_gmail_import_job(
             "imported_count": imported_count,
             "skipped_count": skipped_count,
             "seen_count": len(message_ids),
+            "message_errors": message_errors[:10],
         }
         db.commit()
         raise
@@ -252,6 +333,12 @@ async def sync_gmail_connection(
     actor: AuthenticatedUser,
     max_results: int = 20,
 ) -> JobRun:
+    active_job = get_active_gmail_import_job(db, organization_id, connection_id)
+    if active_job is not None:
+        db.commit()
+        db.refresh(active_job)
+        return active_job
+
     job = create_gmail_import_job(
         db,
         organization_id,
@@ -265,6 +352,8 @@ async def sync_gmail_connection(
 
 def list_recent_imports(db: Session, organization_id: str, actor: AuthenticatedUser) -> list[JobRun]:
     require_membership(db, organization_id, actor)
+    if cleanup_stale_gmail_import_jobs(db, organization_id):
+        db.commit()
     return list(
         db.scalars(
             select(JobRun)
@@ -281,4 +370,3 @@ def get_job_run(db: Session, organization_id: str, job_id: str, actor: Authentic
     if job is None or job.organization_id != organization_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job run not found")
     return job
-

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import AuthenticatedUser
 from app.models.customer import Customer
+from app.models.gmail_connection import GmailConnection
 from app.models.member import MemberStatus, OrganizationMember
 from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketStatus
 from app.models.ticket_event import TicketEvent
@@ -105,6 +106,7 @@ def list_tickets(
     sla_status_filter: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    gmail_connection_id_filter: str | None = None,
 ) -> list[TicketListItem]:
     require_membership(db, organization_id, actor)
     priority_rank = case(
@@ -116,7 +118,7 @@ def list_tickets(
     )
     statement = (
         select(Ticket)
-        .options(selectinload(Ticket.customer))
+        .options(selectinload(Ticket.customer), selectinload(Ticket.attachments))
         .where(Ticket.organization_id == organization_id)
         .order_by(priority_rank.asc(), Ticket.received_at.desc(), Ticket.id.asc())
     )
@@ -128,13 +130,30 @@ def list_tickets(
         statement = statement.where(Ticket.priority == priority_filter)
     if sla_status_filter:
         statement = statement.where(Ticket.sla_status == sla_status_filter)
+    if gmail_connection_id_filter:
+        statement = statement.where(Ticket.gmail_connection_id == gmail_connection_id_filter)
 
     tickets = db.scalars(statement.limit(limit).offset(offset)).all()
+    connection_ids = {ticket.gmail_connection_id for ticket in tickets if ticket.gmail_connection_id}
+    connections = {}
+    if connection_ids:
+        connections = {
+            connection.id: connection
+            for connection in db.scalars(
+                select(GmailConnection).where(
+                    GmailConnection.organization_id == organization_id,
+                    GmailConnection.id.in_(connection_ids),
+                )
+            )
+        }
     return [
         TicketListItem(
             id=ticket.id,
             customer_email=ticket.customer.email,
             customer_name=ticket.customer.name,
+            gmail_connection_id=ticket.gmail_connection_id,
+            gmail_connection_email=connections[ticket.gmail_connection_id].gmail_email if ticket.gmail_connection_id in connections else None,
+            gmail_connection_display_name=connections[ticket.gmail_connection_id].display_name if ticket.gmail_connection_id in connections else None,
             gmail_message_id=ticket.gmail_message_id,
             gmail_thread_id=ticket.gmail_thread_id,
             subject=ticket.subject,
@@ -164,7 +183,7 @@ def get_ticket_or_404(
     require_membership(db, organization_id, actor)
     ticket = db.scalar(
         select(Ticket)
-        .options(selectinload(Ticket.customer))
+        .options(selectinload(Ticket.customer), selectinload(Ticket.attachments))
         .where(Ticket.organization_id == organization_id, Ticket.id == ticket_id)
     )
     if ticket is None:
@@ -279,5 +298,3 @@ def list_ticket_events(
             .order_by(TicketEvent.created_at.asc())
         )
     )
-
-

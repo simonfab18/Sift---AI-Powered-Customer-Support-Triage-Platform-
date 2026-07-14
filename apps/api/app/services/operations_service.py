@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import AuthenticatedUser
 from app.core.config import settings
 from app.core.logging import redact_value
+from app.integrations.gemini.client import GeminiQuotaExceededError
 from app.models.gmail_connection import GmailConnection
 from app.models.job_run import JobRun, JobRunStatus
 from app.models.member import MemberRole
@@ -71,6 +72,8 @@ def classify_error(value: object) -> tuple[str, str, bool]:
     message = sanitize_error(value)
     lowered = message.lower()
     error_class = value.__class__.__name__ if isinstance(value, Exception) else "OperationalError"
+    if isinstance(value, GeminiQuotaExceededError):
+        return error_class, "quota_exceeded", True
     if any(pattern in lowered for pattern in TERMINAL_PATTERNS):
         return error_class, "terminal_error", False
     if any(pattern in lowered for pattern in RETRYABLE_PATTERNS):
@@ -125,7 +128,8 @@ def mark_job_failed(job: JobRun, exc: object) -> None:
     job.alert_owner = settings.operations_alert_owner
     job.runbook_url = runbook_url(job.job_type.replace("_", "-"))
     if job.retryable:
-        delay_seconds = min(300, 30 * (2 ** max(job.attempts - 1, 0)))
+        provider_retry_after = getattr(exc, "retry_after_seconds", None)
+        delay_seconds = provider_retry_after or min(300, 30 * (2 ** max(job.attempts - 1, 0)))
         job.next_retry_at = utc_now() + timedelta(seconds=delay_seconds)
     else:
         job.next_retry_at = None

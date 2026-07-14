@@ -11,9 +11,10 @@ from app.models.ticket_saved_view import TicketSavedView
 from app.schemas.saved_view import SavedViewCreate, SavedViewUpdate
 from app.services.rbac_service import require_membership
 
-ALLOWED_FILTER_KEYS = {"status", "priority", "assigned_to", "triage_status"}
+ALLOWED_FILTER_KEYS = {"status", "priority", "assigned_to", "triage_status", "sla_status", "gmail_connection_id"}
 ALLOWED_STATUSES = {item.value for item in TicketStatus} | {"all"}
 ALLOWED_PRIORITIES = {item.value for item in TicketPriority}
+ALLOWED_SLA_STATUSES = {"on_track", "warning", "breached", "paused"}
 
 
 def sanitize_saved_view_filters(filters: dict[str, Any]) -> dict[str, Any]:
@@ -24,6 +25,8 @@ def sanitize_saved_view_filters(filters: dict[str, Any]) -> dict[str, Any]:
         if key == "status" and value not in ALLOWED_STATUSES:
             continue
         if key == "priority" and value not in ALLOWED_PRIORITIES:
+            continue
+        if key == "sla_status" and value not in ALLOWED_SLA_STATUSES:
             continue
         sanitized[key] = value
     return sanitized

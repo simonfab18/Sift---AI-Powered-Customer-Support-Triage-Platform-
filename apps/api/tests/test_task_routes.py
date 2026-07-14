@@ -1,4 +1,4 @@
-import base64
+﻿import base64
 import json
 
 from fastapi import HTTPException, status
@@ -36,7 +36,7 @@ def test_task_route_rejects_unexpected_google_identity(client: TestClient, monke
 def test_ai_triage_task_route_runs_task_with_valid_identity(client: TestClient, monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr("app.api.routes.tasks.verify_task_pubsub_oidc_token", lambda authorization: {"email": "task@example.com"})
-    monkeypatch.setattr("app.api.routes.tasks.run_ai_triage_task", lambda *, job_id: calls.append(job_id) or "result-1")
+    monkeypatch.setattr("app.api.routes.tasks.run_ai_triage_task", lambda *, job_id: calls.append(job_id) or ("completed", "result-1"))
 
     response = client.post(
         "/v1/tasks/ai/triage",

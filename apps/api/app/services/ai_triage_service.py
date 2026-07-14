@@ -1,12 +1,13 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from time import perf_counter
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthenticatedUser
-from app.integrations.gemini.client import classify_ticket_with_gemini
+from app.core.config import settings
+from app.integrations.gemini.client import GeminiQuotaExceededError, classify_ticket_with_gemini
 from app.integrations.gemini.prompts import build_triage_prompt
 from app.models.ai_triage_result import AITriageResult
 from app.models.job_run import JobRun
@@ -78,6 +79,36 @@ def _safe_error(exc: Exception) -> str:
     return str(exc)
 
 
+def _seconds_until_next_utc_day(now: datetime) -> int:
+    next_day = (now + timedelta(days=1)).date()
+    next_midnight = datetime.combine(next_day, datetime.min.time(), tzinfo=UTC)
+    return max(1, int((next_midnight - now).total_seconds()))
+
+
+def enforce_free_tier_gemini_limit(db: Session, job: JobRun | None) -> None:
+    limit = settings.ai_triage_daily_gemini_limit
+    if limit <= 0 or job is None:
+        return
+
+    now = utc_now()
+    day_start = datetime.combine(now.date(), datetime.min.time(), tzinfo=UTC)
+    started_today = db.scalar(
+        select(func.count())
+        .select_from(JobRun)
+        .where(
+            JobRun.job_type == "ai_triage",
+            JobRun.started_at >= day_start,
+            JobRun.id != job.id,
+        )
+    ) or 0
+    if started_today >= limit:
+        retry_after = _seconds_until_next_utc_day(now)
+        raise GeminiQuotaExceededError(
+            "Gemini free-tier daily triage limit reached; retry after the next UTC day.",
+            retry_after_seconds=retry_after,
+        )
+
+
 async def _execute_ticket_triage(
     db: Session,
     ticket: Ticket,
@@ -101,21 +132,23 @@ async def _execute_ticket_triage(
         ticket.active_triage_job_id = job.id
     db.commit()
 
-    retrieved_knowledge = retrieve_knowledge_sources(
-        db,
-        ticket.organization_id,
-        f"{ticket.subject} {ticket.message_text}",
-    )
-    knowledge_references = [item.as_reference() for item in retrieved_knowledge]
-    prompt = build_triage_prompt(
-        customer_name=ticket.customer.name,
-        customer_email=ticket.customer.email,
-        subject=ticket.subject,
-        message=ticket.message_text,
-        knowledge_sources=knowledge_references,
-    )
-    timer = perf_counter()
     try:
+        enforce_free_tier_gemini_limit(db, job)
+
+        retrieved_knowledge = retrieve_knowledge_sources(
+            db,
+            ticket.organization_id,
+            f"{ticket.subject} {ticket.message_text}",
+        )
+        knowledge_references = [item.as_reference() for item in retrieved_knowledge]
+        prompt = build_triage_prompt(
+            customer_name=ticket.customer.name,
+            customer_email=ticket.customer.email,
+            subject=ticket.subject,
+            message=ticket.message_text,
+            knowledge_sources=knowledge_references,
+        )
+        timer = perf_counter()
         output, raw_output = await classify_ticket_with_gemini(prompt)
         latency_ms = int((perf_counter() - timer) * 1000)
         requires_human_review = enforce_human_review(output, ticket.subject, ticket.message_text)
@@ -267,5 +300,3 @@ def list_ticket_triage_results(
             .order_by(AITriageResult.created_at.desc())
         )
     )
-
-

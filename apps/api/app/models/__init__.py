@@ -15,6 +15,7 @@ from app.models.reply_suggestion import ReplySuggestion
 from app.models.response_template import ResponseTemplate
 from app.models.routing_rule import RoutingRule, RoutingRuleExecution
 from app.models.ticket import Ticket
+from app.models.ticket_attachment import TicketAttachment
 from app.models.ticket_collaboration_lock import TicketCollaborationLock
 from app.models.ticket_event import TicketEvent
 from app.models.ticket_internal_note import TicketInternalNote, TicketInternalNoteEdit, TicketInternalNoteMention
@@ -41,6 +42,7 @@ __all__ = [
     "RoutingRule",
     "RoutingRuleExecution",
     "Ticket",
+    "TicketAttachment",
     "TicketCollaborationLock",
     "TicketEvent",
     "TicketInternalNote",
@@ -49,5 +51,3 @@ __all__ = [
     "TicketSavedView",
     "WorkspaceSettings",
 ]
-
-

@@ -105,7 +105,7 @@ Do not block the first launch on:
 1. **Human approval remains mandatory.** AI may recommend and draft, but it must not send a customer reply automatically in the first production version.
 2. **Every external event must be idempotent.** Duplicate Gmail and Pub/Sub events must not create duplicate tickets, triage results, or drafts.
 3. **A push notification is a signal, not the source of truth.** Gmail history is the source used to discover mailbox changes.
-4. **The UI must expose operational truth.** Do not show â€œliveâ€ or â€œhealthyâ€ unless the backend can verify it.
+4. **The UI must expose operational truth.** Do not show ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œliveÃƒÂ¢Ã¢â€šÂ¬Ã‚Â or ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œhealthyÃƒÂ¢Ã¢â€šÂ¬Ã‚Â unless the backend can verify it.
 5. **Organization isolation is enforced in the backend.** Frontend filtering is never a security boundary.
 6. **Background work must be retryable.** Network, Gmail, Gemini, Pub/Sub task dispatch, and database failures must have defined retry behavior.
 7. **Manual controls stay available.** Keep manual Sync, Retry, Re-run triage, and reconnect actions.
@@ -147,7 +147,7 @@ flowchart LR
 - **Scheduler:** Google Cloud Scheduler invoking OIDC-protected scheduler task routes
 - **Database and Auth:** Supabase
 - **Mailbox notifications:** Google Cloud Pub/Sub
-- **Error tracking:** Sentry or equivalent
+- **Error tracking:** Google Cloud Error Reporting on Cloud Run; Sentry remains an optional DSN-backed fallback
 - **Uptime monitoring:** External health checks
 - **Logs:** Structured JSON logs with searchable request and job IDs
 
@@ -171,7 +171,7 @@ Redis and Celery are retired from staging and production. Use one scheduler owne
 
 ---
 
-# Phase 0 â€” Baseline and Release Control
+# Phase 0 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Baseline and Release Control
 
 ## Goal
 
@@ -210,7 +210,7 @@ Create a validated settings model for:
 - Gmail Pub/Sub expected audience/service-account email and internal task-route OIDC audience/service-account emails
 - Gemini API key and model
 - Frontend origin
-- Error-tracking DSN
+- Error-tracking provider and optional DSN
 - Environment name
 - Logging level
 - Worker concurrency
@@ -228,7 +228,7 @@ The API must fail fast when required production settings are missing.
 
 ---
 
-# Phase 1 â€” Automatic Gmail Synchronization
+# Phase 1 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Automatic Gmail Synchronization
 
 Status: In progress. M1 completed the authenticated Pub/Sub webhook foundation, Gmail watch registration, watch renewal entrypoint, and sync-event persistence. M2 completed backend Gmail history processing, duplicate-safe ticket ingestion, expired-checkpoint recovery, per-connection locking, and fallback stale-connection discovery.
 
@@ -319,7 +319,7 @@ Push notifications can be delayed or missed, so add a scheduled fallback.
 
 Recommended behavior:
 
-- Every 10â€“15 minutes, find active connections whose last successful sync is stale.
+- Every 10ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“15 minutes, find active connections whose last successful sync is stale.
 - Enqueue an incremental sync for those connections.
 - Add random jitter to avoid synchronizing every mailbox at the same second.
 - Do not enqueue another job when a connection is already syncing.
@@ -396,7 +396,7 @@ error
 paused
 ```
 
-Do not represent all failures with one generic â€œerrorâ€ state.
+Do not represent all failures with one generic ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œerrorÃƒÂ¢Ã¢â€šÂ¬Ã‚Â state.
 
 ## 1.8 API additions
 
@@ -428,7 +428,7 @@ Watch registration and renewal endpoints should be owner/admin only. Internal sc
 
 ---
 
-# Phase 2 â€” Core Workflow Completion
+# Phase 2 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Core Workflow Completion
 
 ## Goal
 
@@ -483,7 +483,7 @@ Keep triage job state separate from customer-support status where possible. Avoi
 - Invalidate prior approval when an approved suggestion is edited.
 - Prevent draft creation from stale or rejected suggestions.
 - Display the Gmail thread destination before draft creation.
-- Provide â€œOpen draft in Gmailâ€ after creation.
+- Provide ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œOpen draft in GmailÃƒÂ¢Ã¢â€šÂ¬Ã‚Â after creation.
 - Record every edit, approval, rejection, retry, and draft action.
 
 ## 2.4 Inbox behavior
@@ -518,7 +518,7 @@ Keep triage job state separate from customer-support status where possible. Avoi
 
 ---
 
-# Phase 3 â€” Operational Features
+# Phase 3 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Operational Features
 
 ## Goal
 
@@ -667,7 +667,7 @@ Remaining before production exit:
 
 ---
 
-# Phase 4 â€” Security and Data Protection
+# Phase 4 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Security and Data Protection
 
 ## Goal
 
@@ -750,19 +750,21 @@ Completed locally in M6:
 - Added rate limits for OAuth, Gmail sync/watch, triage, retry, draft creation, and member invitations.
 - Added request-size protection and standard API security headers.
 - Added Gmail token key-version metadata and recoverable `reauthorization_required` state for revoked refresh tokens.
+- Added Gmail token keyring support for decrypting previous encryption-key versions during rotation; deployed to Cloud Run staging revision `sift-api-staging-00027-v58`.
 - Added log and operational-error redaction hardening.
 - Added `docs/SECURITY_AND_DATA_CONTROLS.md` covering secret rotation, reauthorization, disconnect semantics, export/deletion direction, retention, backup/restore, and attachment policy.
 
 Remaining before production exit:
 
-- Rotate real deployed secrets in staging/production provider dashboards.
-- Validate backup and restore in staging.
+- Move deployed staging/production secrets into provider secret stores and rotate real provider credentials before pilot. Staging Cloud Run sensitive values now load from Google Secret Manager; staging Gemini provider credential replacement is complete; Google OAuth client secret version 2 is deployed to Secret Manager, Gmail reconnect succeeded, Secret Manager version 1 is disabled, and the old Google Console OAuth secret is disabled; Supabase backend secret rotation is complete; staging Supabase database/pooler password rotation is complete; staging `ENCRYPTION_KEY` rotation is complete with old Gmail token version `1` retained in `ENCRYPTION_KEYRING`.
+- Backup/restore drill, Cloud Run rollback/restore drill, Vercel production alias rollback/restore drill, staging soak, staging Secret Manager migration, Scheduler/Pub/Sub recheck, and Error Reporting recheck passed on 2026-07-13; details are logged in `docs/STAGING_DRILL_LOG.md`. Sync/import/watch and approval-to-draft soak passed on 2026-07-13.
+- Google Cloud Error Reporting is enabled on Cloud Run staging with `ERROR_TRACKING_PROVIDER=google-cloud`; the Error Reporting API is enabled, the runtime service account has `roles/errorreporting.writer`, traffic is on revision `sift-api-staging-00039-8dc`, and controlled event group `CJzzx9Gtis-cSg` verified delivery before pilot signoff; the group count reached `2` after the 2026-07-13 recheck. Gemini remains free-only; `AI_TRIAGE_DAILY_GEMINI_LIMIT` defaults to `20` so extra daily triage jobs are deferred instead of repeatedly calling the provider after free-tier quota is exhausted.
 - Replace in-memory rate limiting with a shared managed limiter if API instances scale horizontally.
 - Implement self-serve organization export/deletion after product/legal approval.
 
 ---
 
-# Phase 5 â€” UI and Product Polish
+# Phase 5 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â UI and Product Polish
 
 ## Goal
 
@@ -827,7 +829,7 @@ Owner/admin-only areas should be clearly marked or hidden based on permission.
 
 ---
 
-# Phase 6 â€” QA, Staging, and Performance
+# Phase 6 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â QA, Staging, and Performance
 
 ## Goal
 
@@ -918,7 +920,7 @@ These are product targets, not external guarantees. Measure and revise them afte
 
 ---
 
-# Phase 7 â€” Pilot Launch
+# Phase 7 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Pilot Launch
 
 ## Goal
 
@@ -968,7 +970,7 @@ Do not launch when any of these are true:
 
 ---
 
-# Phase 8 â€” General Availability Preparation
+# Phase 8 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â General Availability Preparation
 
 ## Goal
 
@@ -986,7 +988,7 @@ Make onboarding repeatable beyond the first pilot.
 - Privacy policy
 - Terms of service
 - Data processing documentation
-- Plan and billing direction
+- Plan and billing direction; current pilot is free-only with paid billing intentionally deferred
 - Email and in-app lifecycle communications
 - Self-service organization export and deletion direction
 - Feature flags and controlled migrations
@@ -995,7 +997,7 @@ Make onboarding repeatable beyond the first pilot.
 
 ## 7. Recommended Production Backlog Order
 
-### P0 â€” Must finish before pilot
+### P0 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Must finish before pilot
 
 1. Environment and migration baseline - completed in M0
 2. Pub/Sub authenticated webhook - foundation completed in M1
@@ -1011,7 +1013,7 @@ Make onboarding repeatable beyond the first pilot.
 12. End-to-end staging test
 13. Monitoring, alerts, backup, and rollback
 
-### P1 â€” Complete during or immediately after pilot
+### P1 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Complete during or immediately after pilot
 
 1. Saved inbox views
 2. Bulk assignment and resolve
@@ -1024,7 +1026,7 @@ Make onboarding repeatable beyond the first pilot.
 9. Customer timeline
 10. Onboarding checklist
 
-### P2 â€” Post-pilot product expansion
+### P2 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Post-pilot product expansion
 
 1. Workspace knowledge base
 2. Knowledge-grounded reply generation

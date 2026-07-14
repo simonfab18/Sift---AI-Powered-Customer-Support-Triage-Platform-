@@ -2,7 +2,9 @@ import asyncio
 import logging
 
 from app.api.deps import AuthenticatedUser
+from app.core.error_tracking import capture_exception
 from app.core.logging import job_id_var
+from app.integrations.gemini.client import GeminiQuotaExceededError
 from app.db.session import SessionLocal
 from app.services.ai_triage_service import run_ticket_triage_job
 from app.services.email_import_service import run_gmail_import_job
@@ -55,6 +57,14 @@ def run_gmail_import_task(
         )
         return job.id
     except Exception as exc:
+        capture_exception(
+            exc,
+            event_name="task.job_failed",
+            job_id=job_id,
+            organization_id=organization_id,
+            connection_id=connection_id,
+            task_type="gmail_import",
+        )
         logger.exception(
             "Task job failed",
             extra={
@@ -95,6 +105,14 @@ def run_gmail_history_sync_task(
         )
         return event.id
     except Exception as exc:
+        capture_exception(
+            exc,
+            event_name="task.sync_event_failed",
+            job_id=event_id,
+            organization_id=organization_id,
+            connection_id=connection_id,
+            task_type="gmail_history_sync",
+        )
         logger.exception(
             "Task sync event failed",
             extra={
@@ -128,14 +146,29 @@ def run_watch_renewal_task(*, organization_id: str, connection_id: str) -> str:
         db.close()
 
 
-def run_ai_triage_task(*, job_id: str) -> str:
+def run_ai_triage_task(*, job_id: str) -> tuple[str, str]:
     token = _set_job_context(job_id)
     db = SessionLocal()
     try:
-        logger.info("Task job started", extra={"event_name": "task.job_started", "job_id": job_id, "task_type": "ai_triage"})
+        logger.info(
+            "Task job started",
+            extra={"event_name": "task.job_started", "job_id": job_id, "task_type": "ai_triage"},
+        )
         result = asyncio.run(run_ticket_triage_job(db, job_id))
-        return result.id
+        return "completed", result.id
+    except GeminiQuotaExceededError as exc:
+        logger.warning(
+            "Task job deferred by Gemini quota",
+            extra={
+                "event_name": "task.job_deferred",
+                "job_id": job_id,
+                "task_type": "ai_triage",
+                "retry_after_seconds": exc.retry_after_seconds,
+            },
+        )
+        return "deferred", job_id
     except Exception as exc:
+        capture_exception(exc, event_name="task.job_failed", job_id=job_id, task_type="ai_triage")
         logger.exception(
             "Task job failed",
             extra={"event_name": "task.job_failed", "job_id": job_id, "task_type": "ai_triage", "sanitized_error": exc},

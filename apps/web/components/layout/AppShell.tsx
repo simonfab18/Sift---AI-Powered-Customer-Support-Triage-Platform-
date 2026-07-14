@@ -15,12 +15,15 @@ import { cx } from "@/components/ui/cx";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", mark: "D", helper: "Overview" },
   { href: "/dashboard/tickets", label: "Triage queue", mark: "Q", helper: "Active tickets", badge: "pending" },
+  { href: "/dashboard/analytics", label: "Analytics", mark: "A", helper: "Performance", ownerOnly: true },
   { href: "/dashboard/settings", label: "Settings", mark: "S", helper: "Knowledge & rules", ownerOnly: true },
 ];
 
 function pageTitle(pathname: string) {
   if (pathname.includes("/tickets/")) return "Ticket detail";
+  if (pathname.includes("/analytics")) return "Analytics";
   if (pathname.includes("/tickets")) return "Triage queue";
+  if (pathname.includes("/settings/audit")) return "Audit log";
   if (pathname.includes("/settings/team")) return "Team";
   if (pathname.includes("/settings/knowledge")) return "Knowledge";
   if (pathname.includes("/settings/routing")) return "Routing";
@@ -33,10 +36,12 @@ function pageTitle(pathname: string) {
 function pageDescription(pathname: string) {
   if (pathname.includes("/tickets/")) return "Review the thread, AI reasoning, and approved Gmail draft state.";
   if (pathname.includes("/tickets")) return "Search, sort, and prioritize support tickets by urgency.";
+  if (pathname.includes("/analytics")) return "Measure support performance, AI quality, Gmail sync, and workload.";
   if (pathname.includes("/settings/team")) return "Manage teammates and workspace access.";
   if (pathname.includes("/settings/knowledge")) return "Manage the sources AI can reference for replies.";
   if (pathname.includes("/settings/routing")) return "Configure rule-based assignment, approval, and priority handling.";
   if (pathname.includes("/settings/workspace")) return "Tune workspace details, signatures, SLA targets, and business hours.";
+  if (pathname.includes("/settings/audit")) return "Filter, inspect, and export administrative activity.";
   if (pathname.includes("/settings")) return "Connect Gmail and configure team operations.";
   if (pathname.includes("/organizations")) return "Choose or create the workspace you want to operate from.";
   return "A calm command center for Gmail support triage.";

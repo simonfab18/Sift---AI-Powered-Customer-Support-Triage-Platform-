@@ -9,6 +9,7 @@ flowchart LR
     Web --> API["FastAPI Backend on Cloud Run"]
     API --> DB["Supabase PostgreSQL"]
     API --> Gmail["Gmail API"]
+    API --> Storage["Private GCS Attachment Bucket"]
     API --> Gemini["Gemini API"]
     API --> TaskTopics["Google Pub/Sub Task Topics"]
     TaskTopics --> TaskRoutes["OIDC-Protected Cloud Run Task Routes"]
@@ -54,7 +55,7 @@ Primary responsibilities:
 - Landing page.
 - App shell and responsive navigation.
 - Organization selection and workspace setup.
-- Gmail connection and import UI.
+- Multiple Gmail inbox connection, import, sync-health, and import-rule UI.
 - Ticket inbox, detail view, approvals, customers, analytics, team, and settings.
 - API communication using the Supabase bearer token.
 
@@ -75,10 +76,11 @@ Primary responsibilities:
 - Enforce organization isolation and role authorization.
 - Manage organizations, members, workspace settings, pilot release controls, and metrics.
 - Handle Gmail OAuth and encrypted token storage.
-- Import Gmail messages into tickets.
+- Import Gmail messages into tickets while preserving source Gmail connection metadata.
 - Run Gemini triage and validate structured AI output.
 - Manage reply suggestions, approvals, rejections, and Gmail draft creation.
 - Write audit logs and ticket events.
+- Store allowed Gmail attachments in private Google Cloud Storage and issue short-lived signed download URLs after tenant authorization.
 
 Important backend areas:
 
@@ -104,15 +106,16 @@ Core tables/models:
 - `customers`
 - `tickets`
 - `ticket_events`
-- `gmail_connections`
+- `gmail_connections` (includes owner/admin display labels and per-connection sync/watch status)
 - `gmail_oauth_states`
-- `mail_import_rules`
+- `mail_import_rules` (includes per-inbox label mapping, unread-only import behavior, active state, and routing direction metadata)
 - `job_runs`
 - `ai_triage_results`
 - `reply_suggestions`
 - `reply_approvals`
 - `gmail_drafts`
 - `audit_logs`
+- `ticket_attachments`
 
 ## Authentication and Authorization
 
@@ -157,7 +160,7 @@ sequenceDiagram
     API-->>Web: Import summary
 ```
 
-Current behavior supports manual import, authenticated Gmail push notifications through Google Cloud Pub/Sub, Pub/Sub-dispatched Gmail history sync, and Cloud Scheduler-triggered fallback sync discovery. New tickets created manually or through Gmail import initialize SLA due dates and run active organization routing rules. M7 pilot controls can pause sync/watch behavior globally or per workspace without deleting connected Gmail data.
+Current behavior supports multiple Gmail inboxes per organization, manual import, authenticated Gmail push notifications through Google Cloud Pub/Sub, Pub/Sub-dispatched Gmail history sync, and Cloud Scheduler-triggered fallback sync discovery. Gmail-created tickets retain their source connection for queue labels and filtering. New tickets created manually or through Gmail import initialize SLA due dates and run active organization routing rules. M7 pilot controls can pause sync/watch behavior globally or per workspace without deleting connected Gmail data.
 
 ## AI Triage Flow
 
@@ -227,13 +230,15 @@ Key endpoint groups:
 - `GET /v1/orgs/{organization_id}/workspace-settings`
 - `PATCH /v1/orgs/{organization_id}/workspace-settings`
 - `GET /v1/orgs/{organization_id}/metrics/overview`
-- `GET /v1/orgs/{organization_id}/tickets`
+- `GET /v1/orgs/{organization_id}/tickets` (supports source Gmail connection filtering)
 - `POST /v1/orgs/{organization_id}/tickets`
 - `GET /v1/orgs/{organization_id}/tickets/{ticket_id}`
 - `PATCH /v1/orgs/{organization_id}/tickets/{ticket_id}`
 - `POST /v1/orgs/{organization_id}/tickets/{ticket_id}/assign`
 - `POST /v1/orgs/{organization_id}/tickets/{ticket_id}/mark-spam`
 - `POST /v1/orgs/{organization_id}/tickets/{ticket_id}/resolve`
+- `POST /v1/orgs/{organization_id}/tickets/{ticket_id}/attachments/{attachment_id}/store`
+- `GET /v1/orgs/{organization_id}/tickets/{ticket_id}/attachments/{attachment_id}/download-url`
 - `GET /v1/orgs/{organization_id}/tickets/{ticket_id}/events`
 - `GET /v1/orgs/{organization_id}/tickets/{ticket_id}/triage`
 - `GET /v1/orgs/{organization_id}/tickets/{ticket_id}/triage-results`
@@ -244,8 +249,11 @@ Key endpoint groups:
 - `POST /v1/orgs/{organization_id}/reply-suggestions/{suggestion_id}/approve`
 - `POST /v1/orgs/{organization_id}/reply-suggestions/{suggestion_id}/reject`
 - `POST /v1/orgs/{organization_id}/reply-suggestions/{suggestion_id}/create-gmail-draft`
-- `GET /v1/orgs/{organization_id}/gmail/connection`
-- `DELETE /v1/orgs/{organization_id}/gmail/connection`
+- `GET /v1/orgs/{organization_id}/gmail/connections`
+- `PATCH /v1/orgs/{organization_id}/gmail/connections/{connection_id}`
+- `DELETE /v1/orgs/{organization_id}/gmail/connections/{connection_id}`
+- `GET /v1/orgs/{organization_id}/gmail/import-rules`
+- `PATCH /v1/orgs/{organization_id}/gmail/import-rules/{rule_id}`
 - `GET /v1/orgs/{organization_id}/gmail/oauth/start`
 - `GET /v1/gmail/oauth/callback`
 - `POST /v1/orgs/{organization_id}/imports/gmail`
@@ -262,6 +270,7 @@ Recommended deployment:
 - Google Cloud Scheduler for fallback sync and watch-renewal scans.
 - Supabase for PostgreSQL and Auth.
 - Google Cloud Console for Gmail OAuth and Pub/Sub.
+- Google Cloud Storage for private ticket attachment storage when attachment storage is enabled.
 - Render may remain available as fallback, but the verified staging baseline uses Cloud Run, Pub/Sub, Cloud Scheduler, Vercel, and Supabase.
 - Staging and production pilot controls through deployment env vars plus workspace settings.
 
@@ -282,7 +291,3 @@ Docker can run local development helpers, but staging and production do not requ
 - External error tracking is not configured until a DSN/provider is supplied.
 - Backup/restore, rollback, and longer soak tests remain required before a real production pilot.
 - Exposed development secrets should be rotated before a real production pilot.
-
-
-
-

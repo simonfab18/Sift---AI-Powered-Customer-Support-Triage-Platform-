@@ -1,5 +1,8 @@
 import type {
   AITriageResult,
+  AttachmentDownloadUrlResponse,
+  AdminAnalytics,
+  AuditLog,
   BulkActionResponse,
   CollaborationLock,
   GmailDraftCreateResponse,
@@ -70,10 +73,13 @@ export async function getMetricsOverview(organizationId: string, accessToken: st
 export async function getTickets(
   organizationId: string,
   accessToken: string,
-  filters: { sla_status?: string } = {},
+  filters: { status?: string; priority?: string; sla_status?: string; gmail_connection_id?: string } = {},
 ): Promise<TicketListItem[]> {
   const params = new URLSearchParams();
+  if (filters.status && filters.status !== "all") params.set("status", filters.status);
+  if (filters.priority && filters.priority !== "all") params.set("priority", filters.priority);
   if (filters.sla_status && filters.sla_status !== "all") params.set("sla_status", filters.sla_status);
+  if (filters.gmail_connection_id && filters.gmail_connection_id !== "all") params.set("gmail_connection_id", filters.gmail_connection_id);
   const query = params.toString() ? `?${params.toString()}` : "";
   return ticketApiFetch<TicketListItem[]>(`/v1/orgs/${organizationId}/tickets${query}`, accessToken);
 }
@@ -82,6 +88,31 @@ export async function getTicket(organizationId: string, ticketId: string, access
   return ticketApiFetch<Ticket>(`/v1/orgs/${organizationId}/tickets/${ticketId}`, accessToken);
 }
 
+
+export async function storeTicketAttachment(
+  organizationId: string,
+  ticketId: string,
+  attachmentId: string,
+  accessToken: string,
+): Promise<Ticket["attachments"][number]> {
+  return ticketApiFetch<Ticket["attachments"][number]>(
+    `/v1/orgs/${organizationId}/tickets/${ticketId}/attachments/${attachmentId}/store`,
+    accessToken,
+    { method: "POST" },
+  );
+}
+
+export async function getTicketAttachmentDownloadUrl(
+  organizationId: string,
+  ticketId: string,
+  attachmentId: string,
+  accessToken: string,
+): Promise<AttachmentDownloadUrlResponse> {
+  return ticketApiFetch<AttachmentDownloadUrlResponse>(
+    `/v1/orgs/${organizationId}/tickets/${ticketId}/attachments/${attachmentId}/download-url`,
+    accessToken,
+  );
+}
 export async function getTicketEvents(organizationId: string, ticketId: string, accessToken: string): Promise<TicketEvent[]> {
   return ticketApiFetch<TicketEvent[]>(`/v1/orgs/${organizationId}/tickets/${ticketId}/events`, accessToken);
 }
@@ -379,4 +410,24 @@ export async function updateWorkspaceSettings(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+export async function getAdminAnalytics(organizationId: string, accessToken: string): Promise<AdminAnalytics> {
+  return ticketApiFetch<AdminAnalytics>(`/v1/orgs/${organizationId}/metrics/admin`, accessToken);
+}
+
+export async function getAuditLogs(
+  organizationId: string,
+  accessToken: string,
+  filters: { action?: string; resource_type?: string; actor_user_id?: string; search?: string; limit?: number; offset?: number } = {},
+): Promise<AuditLog[]> {
+  const params = new URLSearchParams();
+  if (filters.action) params.set("action", filters.action);
+  if (filters.resource_type) params.set("resource_type", filters.resource_type);
+  if (filters.actor_user_id) params.set("actor_user_id", filters.actor_user_id);
+  if (filters.search) params.set("search", filters.search);
+  if (filters.limit) params.set("limit", String(filters.limit));
+  if (filters.offset) params.set("offset", String(filters.offset));
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return ticketApiFetch<AuditLog[]>(`/v1/orgs/${organizationId}/audit-logs${query}`, accessToken);
 }

@@ -61,9 +61,28 @@ SCHEDULER_SERVICE_ACCOUNT_EMAIL=sift-scheduler-staging@customer-support-triage-5
 PUBSUB_EXPECTED_AUDIENCE=https://<cloud-run-api-url>
 PUBSUB_SERVICE_ACCOUNT_EMAIL=sift-pubsub-push-staging@customer-support-triage-501408.iam.gserviceaccount.com
 GOOGLE_REDIRECT_URI=https://<cloud-run-api-url>/v1/gmail/oauth/callback
+ATTACHMENT_STORAGE_BACKEND=gcs
+ATTACHMENT_STORAGE_BUCKET=sift-attachments-staging
+ATTACHMENT_SIGNED_URL_TTL_SECONDS=300
+# Optional override if Cloud Run should sign with a specific service account.
+ATTACHMENT_SIGNING_SERVICE_ACCOUNT_EMAIL=<runtime-service-account-email>
 ```
 
 Keep existing Supabase, Gmail OAuth, Gemini, encryption, CORS, pilot, and operations settings aligned with `docs/ENVIRONMENT.md`.
+
+
+## Attachment storage
+
+When attachment storage is enabled, create a private Google Cloud Storage bucket per environment, for example:
+
+```text
+sift-attachments-staging
+sift-attachments-prod
+```
+
+Grant the Cloud Run runtime service account permission to write/read objects in the bucket. For signed downloads, also grant the runtime service account `roles/iam.serviceAccountTokenCreator` on the signing service account. By default the API signs with the Cloud Run runtime service account; set `ATTACHMENT_SIGNING_SERVICE_ACCOUNT_EMAIL` only when signing should use a different service account.
+
+The app stores only allowed attachments. Blocked MIME/size files remain metadata-only.
 
 ## Task routes
 

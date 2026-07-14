@@ -2,7 +2,7 @@
 
 Use the checked-in `.env.example` files as templates only. Real secrets stay in local `.env` files, Cloud Run environment variables, or deployment secret stores.
 
-Staging may temporarily keep secrets in Cloud Run environment variables. Production secrets should move to Secret Manager before real customer traffic.
+Staging Cloud Run sensitive values now load from Google Secret Manager. Production secrets should also use Secret Manager before real customer traffic, and provider-side credentials should be rotated before pilot.
 
 ## Local files
 
@@ -22,7 +22,9 @@ Do not commit either generated file. They are already ignored by `.gitignore`.
 Required for full local testing:
 
 - `DATABASE_URL`: use Supabase Session Pooler for shared testing, or SQLite for quick local-only tests.
-- `ENCRYPTION_KEY`: strong random value used to encrypt Gmail refresh tokens.
+- `ENCRYPTION_KEY`: strong random value used to encrypt newly stored Gmail refresh tokens.
+- `ENCRYPTION_KEY_VERSION`: active key version recorded on newly stored Gmail refresh tokens.
+- `ENCRYPTION_KEYRING`: optional comma-separated `version:key` list for previous Gmail token encryption keys during rotation.
 - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_JWKS_URL`: Supabase Auth verification settings.
 - `SUPABASE_SECRET_KEY`: server-only admin key. Keep this out of frontend env files.
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: Gmail OAuth settings.
@@ -38,6 +40,12 @@ Required for full local testing:
 - `TASK_PUBSUB_AI_TRIAGE_TOPIC`: Pub/Sub topic for AI triage tasks.
 - `TASK_PUBSUB_WATCH_RENEWAL_TOPIC`: Pub/Sub topic for Gmail watch-renewal tasks.
 - `GEMINI_API_KEY`, `GEMINI_MODEL`: AI triage settings.
+- `AI_TRIAGE_DAILY_GEMINI_LIMIT`: free-only app-side cap for Gemini triage calls per UTC day. Defaults to `20`; use `0` only to disable the app-side cap.
+- `ATTACHMENT_STORAGE_BACKEND`: `disabled` locally or `gcs` when private attachment storage is enabled.
+- `ATTACHMENT_STORAGE_BUCKET`: private Google Cloud Storage bucket used when `ATTACHMENT_STORAGE_BACKEND=gcs`.
+- `ATTACHMENT_SIGNED_URL_TTL_SECONDS`: short-lived attachment download URL lifetime, default `300`.
+- `ATTACHMENT_SIGNING_SERVICE_ACCOUNT_EMAIL`: optional service account email used for Google Cloud Storage signed attachment URLs. If unset, Cloud Run signs with the runtime service account, which must have `roles/iam.serviceAccountTokenCreator` on itself or the configured signer.
+- `ATTACHMENT_MALWARE_SCANNING_BACKEND`: `basic` by default, which blocks EICAR test-signature content before upload. Use `disabled` only when the environment explicitly accepts `not_required` scan status.
 
 Redis and Celery variables are retired for staging and production. Old local `.env` values are ignored during the migration.
 
@@ -103,7 +111,7 @@ The API validates production-like settings when `APP_ENV` is `staging` or `produ
 Required in staging and production:
 
 - `DATABASE_URL`: Supabase/Postgres connection string. SQLite is rejected outside local development.
-- `ENCRYPTION_KEY`: production-managed secret, not `dev-only-change-me`.
+- `ENCRYPTION_KEY`: production-managed active encryption secret, not `dev-only-change-me`.
 - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`.
 - `SUPABASE_JWKS_URL` or `SUPABASE_JWT_SECRET`.
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`.
@@ -119,10 +127,13 @@ Required in staging and production:
 - `TASK_PUBSUB_AI_TRIAGE_TOPIC`.
 - `TASK_PUBSUB_WATCH_RENEWAL_TOPIC`.
 - `GEMINI_API_KEY`, `GEMINI_MODEL`.
+- `AI_TRIAGE_DAILY_GEMINI_LIMIT`.
 - `FRONTEND_ORIGIN`, `API_CORS_ORIGINS`.
 - `SYNC_FALLBACK_INTERVAL_MINUTES`, `WATCH_RENEWAL_SCHEDULE`.
 - `RELEASE_VERSION`, `OPERATIONS_ALERT_OWNER`.
 - `RATE_LIMIT_SENSITIVE_LIMIT`, `RATE_LIMIT_SENSITIVE_WINDOW_SECONDS`, `MAX_REQUEST_BODY_BYTES`, `ENCRYPTION_KEY_VERSION`.
+- `ENCRYPTION_KEYRING` is optional, but when present startup validates its `version:key` format.
+- If `ATTACHMENT_STORAGE_BACKEND=gcs`, `ATTACHMENT_STORAGE_BUCKET` must be set and the Cloud Run runtime service account must be able to write objects and sign/read objects as required for signed URLs.
 
 Forbidden in staging and production:
 
@@ -187,7 +198,7 @@ gmail-api-push@system.gserviceaccount.com
 - `OPERATIONS_RUNBOOK_BASE_URL`: optional base URL used to populate job runbook links.
 - `OPERATIONS_FAILURE_ALERT_THRESHOLD`: repeated-failure threshold for alerting policy.
 
-`ERROR_TRACKING_DSN` remains optional until an external error tracking provider is connected, but the app captures API and task exception context in structured logs now.
+`ERROR_TRACKING_PROVIDER` controls backend error tracking. Use `google-cloud` on Cloud Run to send unhandled API exceptions and failed request-based task exceptions to Google Cloud Error Reporting with redacted request/job context; no DSN is required for that provider. `ERROR_TRACKING_DSN` is only required when `ERROR_TRACKING_PROVIDER=sentry`.
 
 ## Security and pilot settings
 
@@ -196,6 +207,7 @@ gmail-api-push@system.gserviceaccount.com
 - `RATE_LIMIT_SENSITIVE_LIMIT`, `RATE_LIMIT_SENSITIVE_WINDOW_SECONDS`: limiter settings for OAuth, sync, triage, retry, draft, and invite actions.
 - `MAX_REQUEST_BODY_BYTES`: maximum accepted request body size before the API returns `413`.
 - `ENCRYPTION_KEY_VERSION`: metadata version recorded on newly stored Gmail refresh tokens.
+- `ENCRYPTION_KEYRING`: previous-key map used only during encryption-key rotation, for example `1:old-secret,2:older-secret`. Keep this in Secret Manager or an equivalent backend-only secret store.
 - `PILOT_REQUIRE_ALLOWLIST`: when true, pilot-gated organization actions require the organization ID to appear in `PILOT_ALLOWLISTED_ORGANIZATION_IDS`.
 - `PILOT_ALLOWLISTED_ORGANIZATION_IDS`: comma-separated organization IDs allowed to use pilot-gated production paths.
 - `PILOT_SYNC_ENABLED`: global kill switch for Gmail sync/import/history/watch behavior.

@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from secrets import token_urlsafe
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthenticatedUser
@@ -15,10 +15,11 @@ from app.integrations.gmail.oauth import (
     token_expiry_from_seconds,
 )
 from app.models.gmail_connection import GmailConnection
+from app.models.gmail_sync_event import GmailSyncEvent
 from app.models.gmail_oauth_state import GmailOAuthState
 from app.models.mail_import_rule import MailImportRule
 from app.models.member import MemberRole
-from app.schemas.gmail import MailImportRuleUpdate
+from app.schemas.gmail import GmailConnectionUpdate, MailImportRuleUpdate
 from app.services.audit_log_service import create_audit_log
 from app.services.gmail_watch_service import mark_connection_disconnected_for_sync, register_gmail_watch_for_connection
 from app.services.pilot_control_service import ensure_organization_pilot_allowed
@@ -86,6 +87,7 @@ async def complete_gmail_oauth(
             organization_id=oauth_state.organization_id,
             connected_by_user_id=oauth_state.user_id,
             gmail_email=gmail_email,
+            display_name=gmail_email,
             google_account_id=google_account_id,
             encrypted_refresh_token=encrypt_secret(refresh_token),
             token_key_version=settings.encryption_key_version,
@@ -113,6 +115,8 @@ async def complete_gmail_oauth(
         connection = existing
         connection.connected_by_user_id = oauth_state.user_id
         connection.gmail_email = gmail_email
+        if not connection.display_name:
+            connection.display_name = gmail_email
         connection.encrypted_refresh_token = encrypt_secret(refresh_token)
         connection.token_key_version = settings.encryption_key_version
         connection.access_token_expires_at = token_expiry_from_seconds(token_response.get("expires_in"))
@@ -156,12 +160,45 @@ async def complete_gmail_oauth(
     return connection
 
 
+
+def cleanup_stale_connection_sync_locks(db: Session, organization_id: str) -> int:
+    connections = list(
+        db.scalars(
+            select(GmailConnection).where(
+                GmailConnection.organization_id == organization_id,
+                GmailConnection.sync_lock_id.is_not(None),
+            )
+        )
+    )
+    cleared = 0
+    for connection in connections:
+        has_running_event = db.scalar(
+            select(
+                exists().where(
+                    GmailSyncEvent.gmail_connection_id == connection.id,
+                    GmailSyncEvent.status == "running",
+                )
+            )
+        )
+        if has_running_event:
+            continue
+        connection.sync_lock_id = None
+        connection.sync_lock_expires_at = None
+        if connection.sync_status == "syncing":
+            connection.sync_status = "degraded" if connection.sync_error_code else "active"
+        cleared += 1
+    db.flush()
+    return cleared
+
+
 def list_gmail_connections(
     db: Session,
     organization_id: str,
     actor: AuthenticatedUser,
 ) -> list[GmailConnection]:
     require_membership(db, organization_id, actor)
+    if cleanup_stale_connection_sync_locks(db, organization_id):
+        db.commit()
     return list(
         db.scalars(
             select(GmailConnection)
@@ -171,6 +208,36 @@ def list_gmail_connections(
     )
 
 
+
+def update_gmail_connection(
+    db: Session,
+    organization_id: str,
+    connection_id: str,
+    actor: AuthenticatedUser,
+    payload: GmailConnectionUpdate,
+) -> GmailConnection:
+    require_role(db, organization_id, actor, {MemberRole.OWNER, MemberRole.ADMIN})
+    connection = db.get(GmailConnection, connection_id)
+    if connection is None or connection.organization_id != organization_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gmail connection not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "display_name" in update_data:
+        next_name = update_data["display_name"]
+        connection.display_name = next_name.strip() if isinstance(next_name, str) and next_name.strip() else None
+
+    create_audit_log(
+        db,
+        organization_id=organization_id,
+        actor_user_id=actor.id,
+        action="gmail.connection.updated",
+        resource_type="gmail_connection",
+        resource_id=connection.id,
+        metadata={"display_name": connection.display_name, "gmail_email": connection.gmail_email},
+    )
+    db.commit()
+    db.refresh(connection)
+    return connection
 def revoke_gmail_connection(
     db: Session,
     organization_id: str,
@@ -220,7 +287,20 @@ def update_import_rule(
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(rule, field, value)
 
+    create_audit_log(
+        db,
+        organization_id=organization_id,
+        actor_user_id=actor.id,
+        action="gmail.import_rule.updated",
+        resource_type="mail_import_rule",
+        resource_id=rule.id,
+        metadata={
+            "gmail_connection_id": rule.gmail_connection_id,
+            "support_label_id": rule.support_label_id,
+            "routing_direction": rule.routing_direction,
+            "is_active": rule.is_active,
+        },
+    )
     db.commit()
     db.refresh(rule)
     return rule
-

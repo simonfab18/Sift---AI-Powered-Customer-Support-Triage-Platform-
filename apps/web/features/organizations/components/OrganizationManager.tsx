@@ -113,7 +113,7 @@ export function OrganizationManager() {
             href="/dashboard/settings/gmail"
             className="mt-5 inline-flex rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white"
           >
-            Continue to Gmail settings
+            Continue to Gmail import
           </Link>
         ) : null}
       </div>

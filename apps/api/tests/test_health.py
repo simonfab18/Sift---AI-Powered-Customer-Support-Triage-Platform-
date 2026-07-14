@@ -47,3 +47,20 @@ def test_status_returns_service_status(monkeypatch) -> None:
     assert response.json()["status"] == "ok"
     assert response.json()["service"]
     assert response.json()["release_version"]
+
+def test_staging_cors_allows_localhost(monkeypatch) -> None:
+    monkeypatch.setattr("app.main.settings.app_env", "staging")
+    monkeypatch.setattr("app.main.settings.api_cors_origins", "https://ai-customer-support-triage-response.vercel.app")
+    client = TestClient(create_app())
+
+    response = client.options(
+        "/v1/status",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"

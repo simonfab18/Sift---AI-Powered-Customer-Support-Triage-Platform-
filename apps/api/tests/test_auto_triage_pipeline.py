@@ -1,10 +1,12 @@
 import asyncio
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.api.deps import AuthenticatedUser
+from app.integrations.gemini.client import GeminiQuotaExceededError
 from app.models.ai_triage_result import AITriageResult
 from app.models.job_run import JobRun
 from app.models.reply_approval import ReplyApproval
@@ -121,6 +123,97 @@ def test_triage_worker_completes_job_and_versions_result(client: TestClient, cre
     assert approval is not None
     assert "ticket.ai_triaged" in event_types
 
+
+
+def test_quota_failed_triage_sets_retry_after_without_pubsub_redelivery(
+    client: TestClient,
+    create_org,
+    monkeypatch,
+) -> None:
+    from app.services import task_runner_service
+
+    organization = create_org()
+    ticket = create_api_ticket(client, organization["id"])
+
+    async def fake_classify(prompt: str):
+        raise GeminiQuotaExceededError("Gemini quota exceeded", retry_after_seconds=61)
+
+    monkeypatch.setattr("app.services.ai_triage_service.classify_ticket_with_gemini", fake_classify)
+    monkeypatch.setattr(task_runner_service, "SessionLocal", client.session_factory)
+
+    with client.session_factory() as db:
+        job = db.scalar(select(JobRun).where(JobRun.job_type == "ai_triage"))
+        job_id = job.id
+
+    status, returned_id = task_runner_service.run_ai_triage_task(job_id=job_id)
+
+    assert status == "deferred"
+    assert returned_id == job_id
+    with client.session_factory() as db:
+        failed_ticket = db.get(Ticket, ticket["id"])
+        failed_job = db.get(JobRun, job_id)
+
+    assert failed_ticket.triage_status == "triage_failed"
+    assert failed_ticket.active_triage_job_id is None
+    assert failed_ticket.triage_error_message == "Gemini quota exceeded"
+    assert failed_job.status == "failed"
+    assert failed_job.error_code == "quota_exceeded"
+    assert failed_job.retryable is True
+    assert failed_job.next_retry_at is not None
+    assert 55 <= (failed_job.next_retry_at - failed_job.finished_at).total_seconds() <= 70
+
+
+def test_free_tier_daily_limit_defers_without_calling_gemini(
+    client: TestClient,
+    create_org,
+    monkeypatch,
+) -> None:
+    from app.core.config import settings
+    from app.services import task_runner_service
+
+    organization = create_org()
+    ticket = create_api_ticket(client, organization["id"])
+    monkeypatch.setattr(settings, "ai_triage_daily_gemini_limit", 1)
+
+    async def fail_if_called(prompt: str):
+        raise AssertionError("Gemini should not be called after the free-tier daily limit is reached")
+
+    monkeypatch.setattr("app.services.ai_triage_service.classify_ticket_with_gemini", fail_if_called)
+    monkeypatch.setattr(task_runner_service, "SessionLocal", client.session_factory)
+
+    with client.session_factory() as db:
+        job = db.scalar(select(JobRun).where(JobRun.job_type == "ai_triage"))
+        job_id = job.id
+        db.add(
+            JobRun(
+                organization_id=organization["id"],
+                job_type="ai_triage",
+                queue_name="ai_triage",
+                status="succeeded",
+                attempts=1,
+                started_at=datetime.now(UTC),
+                finished_at=datetime.now(UTC),
+                job_metadata={"ticket_id": "previous-ticket"},
+            )
+        )
+        db.commit()
+
+    status, returned_id = task_runner_service.run_ai_triage_task(job_id=job_id)
+
+    assert status == "deferred"
+    assert returned_id == job_id
+    with client.session_factory() as db:
+        failed_ticket = db.get(Ticket, ticket["id"])
+        failed_job = db.get(JobRun, job_id)
+        results = list(db.scalars(select(AITriageResult).where(AITriageResult.ticket_id == ticket["id"])))
+
+    assert failed_ticket.triage_status == "triage_failed"
+    assert failed_ticket.triage_error_message == "Gemini free-tier daily triage limit reached; retry after the next UTC day."
+    assert failed_job.status == "failed"
+    assert failed_job.error_code == "quota_exceeded"
+    assert failed_job.retryable is True
+    assert failed_job.next_retry_at is not None
+    assert results == []
 
 def test_failed_triage_is_visible_and_retryable(client: TestClient, create_org, monkeypatch, stub_auto_triage_dispatch) -> None:
     organization = create_org()

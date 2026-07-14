@@ -12,6 +12,11 @@ const slaTone: Record<string, string> = {
   paused: "bg-slate-100 text-slate-600",
 };
 
+function SourceInboxBadge({ ticket }: { ticket: TicketListItem }) {
+  const label = ticket.gmail_connection_display_name || ticket.gmail_connection_email;
+  if (!label) return <span className="text-xs text-slate-400">Manual</span>;
+  return <span className="rounded-md bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700">{label}</span>;
+}
 function SlaBadge({ status }: { status: string }) {
   return <span className={`rounded-md px-2 py-1 text-xs font-medium capitalize ${slaTone[status] ?? "bg-slate-100 text-slate-600"}`}>{status.replaceAll("_", " ")}</span>;
 }
@@ -44,6 +49,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
               {selectable ? <th className="w-10 px-3 py-3">Select</th> : null}
               <th className="px-4 py-3">Subject</th>
               <th className="px-4 py-3">Sender</th>
+              <th className="px-4 py-3">Inbox</th>
               <th className="px-4 py-3">Urgency</th>
               <th className="px-4 py-3">Category</th>
               <th className="px-4 py-3">Status</th>
@@ -69,6 +75,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
                 ) : null}
                 <td className="px-4 py-3 font-medium text-slate-900"><Link href={`/dashboard/tickets/${ticket.id}`}>{ticket.subject}</Link></td>
                 <td className="px-4 py-3 text-slate-600">{ticket.customer_name ?? ticket.customer_email}</td>
+                <td className="px-4 py-3"><SourceInboxBadge ticket={ticket} /></td>
                 <td className="px-4 py-3"><TicketPriorityBadge priority={ticket.priority} /></td>
                 <td className="px-4 py-3 text-slate-600">{ticket.category.replaceAll("_", " ")}</td>
                 <td className="px-4 py-3"><TicketStatusBadge status={ticket.status} /></td>
@@ -114,4 +121,3 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
     </div>
   );
 }
-

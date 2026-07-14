@@ -13,6 +13,31 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 class GmailHistoryExpiredError(Exception):
     """Raised when Gmail history checkpoint is too old or invalid."""
 
+
+def _gmail_error_detail(response: httpx.Response, fallback: str) -> str:
+    reason = None
+    message = None
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    error = body.get("error") if isinstance(body, dict) else None
+    if isinstance(error, dict):
+        reason = error.get("status")
+        message = error.get("message")
+        details = error.get("errors")
+        if isinstance(details, list) and details:
+            first = details[0]
+            if isinstance(first, dict):
+                reason = reason or first.get("reason")
+    parts = [fallback, f"status={response.status_code}"]
+    if reason:
+        parts.append(f"reason={str(reason)[:120]}")
+    if message:
+        parts.append(f"message={str(message)[:240]}")
+    return "; ".join(parts)
+
+
 def gmail_expiration_from_millis(value: str | int | None) -> datetime | None:
     if value is None:
         return None
@@ -114,6 +139,7 @@ async def list_gmail_message_ids(
 
     return [message["id"] for message in response.json().get("messages", [])]
 
+
 async def list_gmail_history(
     access_token: str,
     start_history_id: str,
@@ -146,6 +172,7 @@ async def list_gmail_history(
 
     return response.json()
 
+
 async def get_gmail_message(access_token: str, message_id: str) -> dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=20, trust_env=False) as client:
@@ -161,7 +188,10 @@ async def get_gmail_message(access_token: str, message_id: str) -> dict[str, Any
         ) from exc
 
     if response.status_code >= 400:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gmail message fetch failed")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_gmail_error_detail(response, "Gmail message fetch failed"),
+        )
 
     return response.json()
 
@@ -186,5 +216,24 @@ async def create_gmail_draft(access_token: str, raw_message: str, thread_id: str
 
     if response.status_code >= 400:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gmail draft creation failed")
+
+    return response.json()
+
+
+async def get_gmail_attachment(access_token: str, message_id: str, attachment_id: str) -> dict[str, Any]:
+    try:
+        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
+            response = await client.get(
+                f"{GMAIL_API_BASE_URL}/users/me/messages/{message_id}/attachments/{attachment_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not reach Gmail attachment endpoint from the API server",
+        ) from exc
+
+    if response.status_code >= 400:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gmail attachment fetch failed")
 
     return response.json()

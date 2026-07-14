@@ -8,7 +8,7 @@ from app.models.gmail_sync_event import GmailSyncEvent
 from app.models.job_run import JobRun, JobRunStatus
 from app.models.ticket import Ticket, TicketTriageStatus
 from app.services.ai_triage_service import PROMPT_VERSION, SCHEMA_VERSION
-from app.services.email_import_service import create_gmail_import_job
+from app.services.email_import_service import create_gmail_import_job, get_active_gmail_import_job
 from app.services.gmail_history_sync_service import create_history_sync_event, list_stale_connections
 from app.services.operations_service import mark_job_failed
 from app.services.pilot_control_service import ensure_auto_triage_enabled, ensure_sync_enabled, is_auto_triage_enabled
@@ -29,6 +29,12 @@ def enqueue_gmail_import(
     max_results: int = 20,
 ) -> JobRun:
     ensure_sync_enabled(db, organization_id)
+    active_job = get_active_gmail_import_job(db, organization_id, connection_id)
+    if active_job is not None:
+        db.commit()
+        db.refresh(active_job)
+        return active_job
+
     job = create_gmail_import_job(db, organization_id, connection_id, actor, max_results=max_results)
     try:
         dispatched = publish_gmail_import_task(

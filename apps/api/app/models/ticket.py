@@ -10,6 +10,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.customer import Customer
+    from app.models.ticket_attachment import TicketAttachment
     from app.models.ticket_event import TicketEvent
 
 
@@ -97,10 +98,13 @@ class Ticket(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     customer: Mapped["Customer"] = relationship("Customer", back_populates="tickets")
+    attachments: Mapped[list["TicketAttachment"]] = relationship(
+        "TicketAttachment",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+    )
     events: Mapped[list["TicketEvent"]] = relationship(
         "TicketEvent",
         back_populates="ticket",
         cascade="all, delete-orphan",
     )
-
-

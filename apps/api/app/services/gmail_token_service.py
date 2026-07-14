@@ -63,7 +63,10 @@ async def refresh_connection_access_token(
     refresh_func=None,
 ) -> tuple[str, datetime | None]:
     try:
-        refresh_token = decrypt_secret(connection.encrypted_refresh_token)
+        refresh_token = decrypt_secret(
+            connection.encrypted_refresh_token,
+            key_version=connection.token_key_version,
+        )
         token_refresher = refresh_func or refresh_gmail_access_token
         access_token, expires_at = await token_refresher(refresh_token)
     except Exception as exc:

@@ -27,3 +27,14 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Local deployment and tool scratch
+.tmp/
+.deploy-*/
+docs/.obsidian/
+supabase/.temp/
+
+# Accidental local notes/copies
+docs/Untitled/
+docs/Untitled.md
+docs/main.py
+docs/main 1.py

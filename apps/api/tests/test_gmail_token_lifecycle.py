@@ -70,3 +70,27 @@ def test_gmail_connection_exposes_key_version_without_token(client, create_org, 
     assert body["token_key_version"] == 3
     assert "encrypted_refresh_token" not in body
     assert "refresh_token" not in body
+
+
+@pytest.mark.asyncio
+async def test_refresh_access_token_can_decrypt_previous_key_version(client, create_org, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "encryption_key", "old-encryption-key")
+    monkeypatch.setattr(settings, "encryption_key_version", 7)
+    monkeypatch.setattr(settings, "encryption_keyring", None)
+    organization = create_org()
+    connection_id = create_connection(client, organization["id"])
+
+    monkeypatch.setattr(settings, "encryption_key", "new-encryption-key")
+    monkeypatch.setattr(settings, "encryption_key_version", 8)
+    monkeypatch.setattr(settings, "encryption_keyring", "7:old-encryption-key")
+
+    async def fake_refresh(refresh_token: str):
+        assert refresh_token == "refresh-token"
+        return "access-token", None
+
+    with client.session_factory() as db:
+        connection = db.get(GmailConnection, connection_id)
+        access_token, expires_at = await refresh_connection_access_token(db, connection, fake_refresh)
+
+    assert access_token == "access-token"
+    assert expires_at is None

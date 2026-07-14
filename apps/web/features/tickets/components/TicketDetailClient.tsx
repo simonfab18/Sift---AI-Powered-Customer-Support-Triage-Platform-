@@ -19,6 +19,7 @@ import {
   getReplySuggestions,
   getResponseTemplates,
   getTicket,
+  getTicketAttachmentDownloadUrl,
   getTicketRoutingExecutions,
   getTicketEvents,
   getTicketTriageResults,
@@ -26,6 +27,7 @@ import {
   rejectReplySuggestion,
   releaseCollaborationLock,
   runTicketTriage,
+  storeTicketAttachment,
   updateInternalNote,
   updateReplySuggestion,
 } from "../api";
@@ -43,6 +45,29 @@ import type {
 } from "../types";
 
 function displayStatus(status: string) {
+  return status.replaceAll("_", " ");
+}
+
+function formatAttachmentSize(sizeBytes: number | null) {
+  if (sizeBytes === null) return "Unknown size";
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let size = sizeBytes / 1024;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function attachmentStatusClass(status: string) {
+  if (status.startsWith("blocked")) return "border-red-200 bg-red-50 text-red-700";
+  if (status === "stored" || status === "clean" || status === "metadata_only") return "border-teal-200 bg-teal-50 text-teal-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function displayAttachmentStatus(status: string) {
   return status.replaceAll("_", " ");
 }
 
@@ -73,6 +98,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const [rejectingReply, setRejectingReply] = useState(false);
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
+  const [processingAttachmentId, setProcessingAttachmentId] = useState<string | null>(null);
 
   async function getSessionContext() {
     const { data } = await supabase.auth.getSession();
@@ -306,6 +332,43 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     }
   }
 
+
+  async function handleStoreAttachment(attachmentId: string) {
+    const context = await getSessionContext();
+    if (!context) return;
+    setProcessingAttachmentId(attachmentId);
+    setMessage(null);
+    try {
+      await storeTicketAttachment(context.organizationId, ticketId, attachmentId, context.accessToken);
+      await loadTicket();
+      setMessage("Attachment stored securely.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to store attachment.");
+    } finally {
+      setProcessingAttachmentId(null);
+    }
+  }
+
+  async function handleDownloadAttachment(attachmentId: string, filename?: string | null) {
+    const context = await getSessionContext();
+    if (!context) return;
+    setProcessingAttachmentId(attachmentId);
+    setMessage(null);
+    try {
+      const result = await getTicketAttachmentDownloadUrl(context.organizationId, ticketId, attachmentId, context.accessToken);
+      const anchor = document.createElement("a");
+      anchor.href = result.download_url;
+      anchor.download = filename || "attachment";
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to create attachment download link.");
+    } finally {
+      setProcessingAttachmentId(null);
+    }
+  }
   async function toggleNoteEdits(noteId: string) {
     if (noteEdits[noteId]) {
       setNoteEdits((current) => {
@@ -379,6 +442,44 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
               <div className="rounded-lg bg-slate-50 p-5 text-sm leading-7 text-slate-700">
                 <p className="whitespace-pre-wrap">{ticket.message_text}</p>
               </div>
+              {(ticket.attachments ?? []).length ? (
+                <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-display text-base font-semibold text-slate-900">Email attachments</h3>
+                    <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Metadata only</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {(ticket.attachments ?? []).map((attachment) => (
+                      <div key={attachment.id} className="rounded-md border border-slate-200 p-3 text-sm">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-800">{attachment.filename ?? "Unnamed attachment"}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {[attachment.mime_type ?? "unknown type", formatAttachmentSize(attachment.size_bytes), attachment.is_inline ? "inline" : "attachment"].join(" / ")}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            <span className={`rounded-md border px-2 py-1 text-xs font-medium capitalize ${attachmentStatusClass(attachment.policy_status)}`}>{displayAttachmentStatus(attachment.policy_status)}</span>
+                            <span className={`rounded-md border px-2 py-1 text-xs font-medium capitalize ${attachmentStatusClass(attachment.storage_status)}`}>{displayAttachmentStatus(attachment.storage_status)}</span>
+                            <span className={`rounded-md border px-2 py-1 text-xs font-medium capitalize ${attachmentStatusClass(attachment.scan_status)}`}>{displayAttachmentStatus(attachment.scan_status)}</span>
+                            {attachment.storage_status === "stored" ? (
+                              <Button type="button" variant="ghost" onClick={() => void handleDownloadAttachment(attachment.id, attachment.filename)} disabled={processingAttachmentId === attachment.id}>
+                                {processingAttachmentId === attachment.id ? "Opening..." : "Download"}
+                              </Button>
+                            ) : !attachment.policy_status.startsWith("blocked") ? (
+                              <Button type="button" variant="ghost" onClick={() => void handleStoreAttachment(attachment.id)} disabled={processingAttachmentId === attachment.id}>
+                                {processingAttachmentId === attachment.id ? "Storing..." : "Store file"}
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                        {attachment.notes ? <p className="mt-2 text-xs text-slate-500">{attachment.notes}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">Files stay private. Stored attachments open through short-lived signed URLs after policy and workspace checks.</p>
+                </div>
+              ) : null}
               <div className="mt-6">
                 <h3 className="font-display text-lg font-semibold">Timeline</h3>
                 <div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-200">
@@ -543,4 +644,3 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     </section>
   );
 }
-

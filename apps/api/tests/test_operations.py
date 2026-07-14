@@ -142,3 +142,31 @@ def test_error_sanitizer_and_classifier_redact_secrets() -> None:
     assert error_code == "retryable_error"
     assert retryable is True
 
+def test_error_reporting_test_requires_scheduler_identity(client: TestClient) -> None:
+    response = client.post("/v1/operations/error-reporting-test")
+
+    assert response.status_code == 401
+
+
+def test_error_reporting_test_reports_with_scheduler_identity(client: TestClient, monkeypatch) -> None:
+    captured: list[tuple[Exception, dict]] = []
+    monkeypatch.setattr(
+        "app.api.routes.operations.verify_scheduler_oidc_token",
+        lambda authorization: {"email": "scheduler@example.com"},
+    )
+    monkeypatch.setattr(
+        "app.api.routes.operations.capture_exception",
+        lambda exc, **context: captured.append((exc, context)),
+    )
+
+    response = client.post(
+        "/v1/operations/error-reporting-test",
+        headers={"Authorization": "Bearer valid-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "reported"}
+    assert isinstance(captured[0][0], RuntimeError)
+    assert captured[0][1]["event_name"] == "operations.error_reporting_test"
+    assert captured[0][1]["task_type"] == "error_reporting_test"
+

@@ -83,3 +83,23 @@ def test_unknown_environment_is_rejected():
 
     with pytest.raises(RuntimeError, match="APP_ENV"):
         settings.validate_runtime_settings()
+
+
+def test_encryption_keyring_parses_versioned_keys():
+    settings = production_settings(encryption_keyring="1:old-secret, 2:new-secret")
+
+    assert settings.encryption_keyring_values == {1: "old-secret", 2: "new-secret"}
+    settings.validate_runtime_settings()
+
+
+def test_encryption_keyring_rejects_invalid_format():
+    settings = production_settings(encryption_keyring="old-secret-without-version")
+
+    with pytest.raises(RuntimeError, match="ENCRYPTION_KEYRING"):
+        settings.validate_runtime_settings()
+
+def test_ai_triage_daily_gemini_limit_cannot_be_negative():
+    settings = Settings(_env_file=None, app_env="local", ai_triage_daily_gemini_limit=-1)
+
+    with pytest.raises(RuntimeError, match="AI_TRIAGE_DAILY_GEMINI_LIMIT"):
+        settings.validate_runtime_settings()

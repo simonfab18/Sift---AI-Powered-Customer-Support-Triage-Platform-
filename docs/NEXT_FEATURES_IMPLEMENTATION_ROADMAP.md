@@ -1,4 +1,4 @@
-﻿# Next Features and Implementation Milestones
+# Next Features and Implementation Milestones
 
 **Product:** AI Customer Support Triage and Response System  
 **Working product name:** Sift  
@@ -9,19 +9,19 @@
 
 ## 1. Prioritization Model
 
-### P0 â€” Production blocker
+### P0 — Production blocker
 
 Required before connecting a real pilot support inbox.
 
-### P1 â€” Pilot quality
+### P1 — Pilot quality
 
 Strongly improves daily usability, control, and product value.
 
-### P2 â€” Product expansion
+### P2 — Product expansion
 
 Build after the core workflow is stable and pilot data validates the need.
 
-### P3 â€” Later or optional
+### P3 — Later or optional
 
 Useful ideas that should not distract from the initial product.
 
@@ -46,7 +46,7 @@ Useful ideas that should not distract from the initial product.
 
 ---
 
-# M0 â€” Release Baseline
+# M0 — Release Baseline
 
 ## Features
 
@@ -103,7 +103,7 @@ Frontend:
 
 ---
 
-# M1 â€” Live Gmail Sync Foundation
+# M1 — Live Gmail Sync Foundation
 
 Status: Completed locally in branch `codex/m1-live-gmail-sync-foundation` at commit `cce5a74`.
 
@@ -158,7 +158,7 @@ Status: Completed locally in branch `codex/m1-live-gmail-sync-foundation` at com
 
 ---
 
-# M2 â€” Incremental Sync and Recovery
+# M2 — Incremental Sync and Recovery
 
 Status: Completed locally in branch `codex/m2-incremental-sync-recovery`.
 
@@ -258,7 +258,7 @@ Display:
 
 ---
 
-# M3 â€” Automatic Triage Pipeline
+# M3 — Automatic Triage Pipeline
 
 Status: Completed locally in branch `codex/m3-automatic-triage-pipeline`.
 
@@ -321,7 +321,7 @@ Do not store unrestricted raw model responses when they may expose unnecessary s
 
 ---
 
-# M4 â€” Core Workflow Polish
+# M4 — Core Workflow Polish
 
 Status: Completed locally in branch `codex/m4-core-workflow-polish`.
 
@@ -365,7 +365,7 @@ Status: Completed locally in branch `codex/m4-core-workflow-polish`.
 - Retry transient Gmail failures
 - Prevent duplicate draft
 - Preserve thread association
-- Return â€œOpen in Gmailâ€ destination when available
+- Return “Open in Gmail” destination when available
 - Handle deleted Gmail thread gracefully
 
 ### Acceptance criteria
@@ -413,7 +413,7 @@ Status: Completed locally in branch `codex/m4-core-workflow-polish`.
 
 ---
 
-# M5 â€” Operations and Observability
+# M5 — Operations and Observability
 
 ## Feature 17: Job-run model and operations page
 
@@ -527,7 +527,7 @@ GET /v1/status
 
 ---
 
-# M6 â€” Security and Tenant Hardening
+# M6 — Security and Tenant Hardening
 
 ## Feature 21: Authorization test matrix
 
@@ -627,11 +627,11 @@ Known remaining production follow-up:
 - Rotate all real staging/production secrets in the provider dashboards.
 - Move rate limiting to Redis if API instances scale horizontally.
 - Implement actual organization export/deletion endpoints after legal/product approval.
-- Run backup/restore validation in staging.
+- Backup/restore validation passed on 2026-07-13; see `docs/STAGING_DRILL_LOG.md`.
 
 ---
 
-# M7 â€” Staging and Pilot Release
+# M7 — Staging and Pilot Release
 
 ## Feature 25: Production-like staging
 
@@ -690,7 +690,7 @@ Cover:
 
 ---
 
-# M8 â€” Agent Productivity Features
+# M8 — Agent Productivity Features
 
 ## Feature 28: Saved views
 
@@ -767,7 +767,7 @@ Examples:
 
 ---
 
-# M9 â€” Knowledge and Routing
+# M9 — Knowledge and Routing
 
 ## Feature 33: Workspace knowledge base
 
@@ -851,7 +851,7 @@ Possible actions:
 
 ---
 
-# M10 â€” Analytics and Administration
+# M10 — Analytics and Administration
 
 ## Feature 37: Support performance analytics
 
@@ -879,7 +879,7 @@ Metrics:
 - Rejected suggestion reasons
 - Provider latency and failure rate
 
-Avoid presenting â€œAI accuracyâ€ unless there is a well-defined labeled evaluation set.
+Avoid presenting “AI accuracy” unless there is a well-defined labeled evaluation set.
 
 ## Feature 39: Gmail sync analytics
 
@@ -914,7 +914,7 @@ Metrics:
 
 ---
 
-# M11 â€” Product Expansion
+# M11 — Product Expansion
 
 ## P2 features
 
@@ -926,6 +926,15 @@ Requirements:
 - Connection label in inbox
 - Independent sync status
 - Per-inbox permissions or routing direction
+
+Current status:
+
+- Multiple Gmail inbox support is implemented and deployed to staging/production-facing services.
+- Two staging Gmail inboxes have been connected and verified with active watches, active sync state, future watch expirations, ticket import/source records for both inboxes, and active import rules.
+- Attachment metadata, private GCS storage, signed download URLs, and a basic malware gate are implemented and staging verified.
+- Gemini quota/backoff handling and the free-only app-side daily Gemini guard are deployed; paid quota expansion remains intentionally deferred.
+- Vercel production alias rollback/restore proof, sync/import/watch and approval-to-draft soak, backup/restore, and Cloud Run rollback drills passed on 2026-07-13 and are logged in `docs/STAGING_DRILL_LOG.md`.
+- Staging credential cleanup is complete for Gemini, Google OAuth, Supabase backend secret, Supabase database/pooler password, and encryption-key rotation.
 
 ### Attachments
 
@@ -1004,7 +1013,7 @@ These may be valuable later, but they add operational and security risk before t
 
 This is a sequencing estimate, not a fixed promise.
 
-### Sprint 1 â€” Baseline
+### Sprint 1 — Baseline
 
 - Environment validation
 - Alembic
@@ -1012,14 +1021,14 @@ This is a sequencing estimate, not a fixed promise.
 - Staging deployment skeleton
 - Sync schema migration
 
-### Sprint 2 â€” Push foundation
+### Sprint 2 — Push foundation
 
 - Pub/Sub resources
 - Authenticated webhook
 - Watch registration
 - Watch state UI
 
-### Sprint 3 â€” Incremental sync
+### Sprint 3 — Incremental sync
 
 - History worker
 - Pagination
@@ -1027,7 +1036,7 @@ This is a sequencing estimate, not a fixed promise.
 - Idempotency
 - Per-connection lock
 
-### Sprint 4 â€” Recovery
+### Sprint 4 — Recovery
 
 - Daily renewal
 - Fallback scheduler
@@ -1035,7 +1044,7 @@ This is a sequencing estimate, not a fixed promise.
 - Retry rules
 - Sync event UI
 
-### Sprint 5 â€” AI pipeline
+### Sprint 5 — AI pipeline
 
 - Auto-triage
 - Job states
@@ -1043,7 +1052,7 @@ This is a sequencing estimate, not a fixed promise.
 - Retry and fallback
 - Agent retry UI
 
-### Sprint 6 â€” Workflow polish
+### Sprint 6 — Workflow polish
 
 - Lifecycle state machine
 - Reply versioning
@@ -1051,7 +1060,7 @@ This is a sequencing estimate, not a fixed promise.
 - Draft idempotency
 - Inbox pagination and filters
 
-### Sprint 7 â€” Operations and security
+### Sprint 7 — Operations and security
 
 - Job operations
 - Structured logs
@@ -1061,7 +1070,7 @@ This is a sequencing estimate, not a fixed promise.
 - Rate limits
 - Secret rotation
 
-### Sprint 8 â€” Release candidate
+### Sprint 8 — Release candidate
 
 - E2E suite
 - Failure testing
@@ -1191,23 +1200,12 @@ Every feature must include:
 
 ## 7. Immediate Next Actions
 
-Start with these implementation tickets:
+Current implementation focus before a real pilot:
 
-1. Add Gmail sync tracking fields and `gmail_sync_events`.
-2. Create staging Pub/Sub topic and authenticated push subscription.
-3. Implement Pub/Sub OIDC verification.
-4. Add the Gmail notification webhook.
-5. Add watch registration after OAuth connection.
-6. Add daily watch renewal.
-7. Implement the history-based sync worker.
-8. Add message and Pub/Sub idempotency constraints.
-9. Add per-connection synchronization locking.
-10. Add fallback synchronization and 404 reconciliation.
-11. Add sync-health API and UI.
-12. Trigger automatic triage after ticket creation.
-13. Add job status and retries.
-14. Build the complete staging E2E test.
-15. Rotate production secrets before the pilot.
+1. Complete Vercel production alias rollback proof if required; Cloud Run rollback/restore has already passed.
+2. Rotate provider-side credentials before cutover. Staging Cloud Run sensitive values have been moved to Google Secret Manager; replacement provider keys are still pending.
+3. Add external error tracking if the pilot acceptance item must be covered.
+4. Keep Gemini in free-only mode for pilot usage; defer paid quota expansion until product demand justifies it.
 
 ---
 

@@ -1,4 +1,4 @@
-﻿from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 import logging
 from time import perf_counter
 
@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.core.error_tracking import capture_exception, configure_error_tracking
 from app.core.logging import configure_logging, new_request_id, reset_request_context, set_request_context
 from app.db.session import init_db
 
@@ -18,11 +19,17 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     settings.validate_runtime_settings()
     configure_logging()
+    configure_error_tracking()
     init_db()
     yield
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    capture_exception(
+        exc,
+        event_name="api.unhandled_exception",
+        request_id=getattr(request.state, "request_id", None),
+    )
     logger.exception(
         "Unhandled API exception",
         extra={
@@ -45,9 +52,16 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    staging_origin_regex = (
+        r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+"
+        if settings.normalized_app_env == "staging"
+        else None
+    )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
+        allow_origin_regex=staging_origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

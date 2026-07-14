@@ -2,9 +2,9 @@
 
 ## Current Stage
 
-The project is past the initial MVP foundation. The app now has a Next.js frontend, FastAPI backend, Supabase-backed PostgreSQL database, Supabase Auth, Gmail OAuth, Gmail import, AI triage with Gemini, reply approvals, Gmail draft creation, dashboard views, role-aware navigation, knowledge/routing/SLA backend services, and local development servers.
+The project is past the initial MVP foundation. The app now has a Next.js frontend, FastAPI backend, Supabase-backed PostgreSQL database, Supabase Auth, Gmail OAuth, Gmail import, AI triage with Gemini, reply approvals, Gmail draft creation, dashboard views, role-aware navigation, knowledge/routing/SLA backend services, analytics/admin surfaces, multiple-Gmail-inbox support in local implementation, and local development servers.
 
-M7 staging and pilot release is verified for the core Cloud Run staging path. The repo has pilot controls, a mocked backend release smoke suite, and a Google Cloud Run/Pub/Sub task architecture that removes Redis/Celery from staging and production. Remaining M7 gaps are Gemini free-tier quota during testing, missing external error tracking, and final Vercel redeploy of the Gmail success-banner polish.
+M7 staging and pilot release is verified for the core Cloud Run staging path. The repo has pilot controls, a mocked backend release smoke suite, and a Google Cloud Run/Pub/Sub task architecture that removes Redis/Celery from staging and production. Gemini is configured for free-only operation with an app-side daily triage cap; Google Cloud Error Reporting is enabled for the Cloud Run staging backend, and the Vercel production alias rollback/restore proof is complete.
 
 ## Completed Milestones
 
@@ -145,6 +145,7 @@ M7 staging and pilot release is verified for the core Cloud Run staging path. Th
 - Added rate limiting for OAuth, Gmail sync/watch, triage, retry, draft creation, and member invitation actions.
 - Added request body-size protection and standard API security headers.
 - Added Gmail token key-version metadata and recoverable `reauthorization_required` state for revoked refresh tokens.
+- Added versioned Gmail token keyring support so previous encryption keys can remain readable during key rotation.
 - Added redaction hardening for structured logs and operational errors.
 - Documented secret rotation, reauthorization, data export/deletion direction, retention, backup/restore, and attachment policy.
 ### Production M7: Staging and Pilot Release
@@ -164,9 +165,9 @@ Staging verification completed:
 
 Remaining M7 limitations before a real production pilot:
 
-- Gemini is configured but staging testing can hit the free-tier quota; quota/billing should be resolved before pilot usage.
-- External error tracking is still absent because no DSN/provider was supplied.
-- Backup/restore, rollback drill, and longer staging soak test remain production-readiness exercises.
+- Gemini is configured for free-only pilot usage. `AI_TRIAGE_DAILY_GEMINI_LIMIT` defaults to `20` per UTC day so the backend defers extra AI triage jobs before repeatedly hitting provider quota.
+- Google Cloud Error Reporting is enabled on Cloud Run staging with `ERROR_TRACKING_PROVIDER=google-cloud`; the Error Reporting API is enabled, the runtime service account has `roles/errorreporting.writer`, Cloud Run traffic is on revision `sift-api-staging-00039-8dc`, and controlled event group `CJzzx9Gtis-cSg` verified delivery; the group count reached `2` after the 2026-07-13 recheck.
+- Backup/restore drill passed on 2026-07-13. Cloud Run rollback/restore path passed on 2026-07-13; Vercel production alias rollback and restore path passed on 2026-07-13. Staging soak passed on 2026-07-13 for sync/import/watch health and approval-to-draft verification. Staging sensitive Cloud Run values now load from Google Secret Manager; encryption-key multi-key decrypt support is deployed; staging Gemini key rotation is complete; Google OAuth client secret version 2 is deployed to Secret Manager, Gmail reconnect succeeded, Secret Manager version 1 is disabled, and the old Google Console OAuth secret is disabled; Supabase backend secret rotation is complete; staging `ENCRYPTION_KEY` rotation is complete with old Gmail token version `1` retained in `ENCRYPTION_KEYRING`; staging Supabase database/pooler password rotation is complete; Cloud Run traffic is on `sift-api-staging-00039-8dc`; Scheduler/Pub/Sub/Error Reporting rechecks passed on 2026-07-13.
 ### Production M8: Agent Productivity Features
 
 Backend implementation added:
@@ -199,32 +200,76 @@ Still required for full acceptance:
 - Kept Supabase database/auth and Vercel frontend unchanged.
 - Render may remain available as fallback, but the verified staging baseline now uses Cloud Run, Pub/Sub, Cloud Scheduler, Vercel, and Supabase.
 
-## Current Production Milestone: M9 Knowledge and Routing
+### Production M11: Product Expansion - Multiple Gmail Inboxes
+
+Local implementation added:
+
+- Added display labels for connected Gmail inboxes.
+- Added per-inbox import-rule routing direction metadata.
+- Added owner/admin APIs to update inbox labels and import-rule routing settings.
+- Extended ticket list responses and filters with source Gmail connection metadata.
+- Updated the Gmail settings UI for multiple inboxes, per-inbox sync/watch status, per-inbox import controls, and import-rule editing.
+- Updated the ticket queue UI to show and filter by source inbox, including saved-view preservation. Backend saved-view sanitization now preserves `gmail_connection_id` and `sla_status` filters.
+- Added M11 backend coverage for multiple inbox labels, import-rule routing updates, role restrictions, ticket source labels, inbox filtering, and saved-view inbox-filter preservation.
+
+Staging rollout status:
+
+- Applied the `0015_multiple_gmail_inboxes` migration to staging Supabase.
+- Deployed the M11 backend to Cloud Run staging.
+- Deployed the M11 frontend to a Vercel preview.
+- Staging verification confirms two active Gmail inboxes in one organization, active sync/watch status for both inboxes, future watch expirations, ticket source records for both inboxes, import rules for both inboxes, Cloud Run health/status, and the Vercel ticket route. Saved-view inbox-filter preservation is deployed and covered by backend tests; a signed-in browser smoke for creating a saved view from the UI remains optional.
+- Attachment metadata and secure private file storage are implemented locally. Direct send, additional support channels, and paid billing remain deferred until Gmail product workflows are stable.
+
+## Current Production Milestone: M11 Product Expansion - Multiple Gmail Inboxes
 
 ### Goal
 
-Replies should become more accurate through workspace knowledge, and ticket ownership should become smarter through configurable routing rules and SLA visibility.
+Owners and admins should be able to run one workspace with multiple Gmail inboxes while agents can see and filter the source inbox for each ticket.
 
 ### M7 Follow-Up Items
 
-- Add an external error-tracking DSN/provider if the acceptance item must be covered before a real pilot.
-- Resolve Gemini quota/billing before relying on repeated staging or pilot AI runs.
-- Run a backup/restore drill, rollback drill, and longer staging soak before production cutover.
+- Google Cloud Error Reporting is enabled for staging and verified with controlled group `CJzzx9Gtis-cSg` from `operations.error_reporting_test`.
+- Gemini paid quota expansion is intentionally deferred. Backend quota handling classifies Gemini quota failures as `quota_exceeded`, records provider-aware retry timing, acknowledges task delivery to avoid Pub/Sub retry noise, and now adds a free-only daily app cap before calling Gemini.
+- Vercel production alias rollback proof is complete: production was temporarily rolled back to `dpl_2DGbXGEcaeqk1MprVt8petkZBRuJ`, verified, and restored to `dpl_2pdPBd87Hd8bzu91YdNTkTkEKb9p`. Staging Secret Manager migration, backup/restore, Cloud Run rollback, Vercel rollback, Scheduler/Pub/Sub, and Error Reporting recheck details are logged in `docs/STAGING_DRILL_LOG.md`. Staging Gemini, Google OAuth, Supabase backend secret, Supabase database/pooler password, and encryption-key rotations are complete.
 
-### Backend Work
+### M9 Staging Status
 
-- Implemented M9 workspace knowledge models, retrieval services, routing rules, routing execution records, and SLA timers with organization isolation.
-- Knowledge retrieval is scoped to organization-owned, active, effective knowledge only, and archived sources are excluded from new generation.
-- AI triage records knowledge source references and knowledge usage metadata by ticket and prompt version.
-- Ticket creation and Gmail import initialize SLA due dates and run active routing rules automatically.
-- Backend tests, lint, and a local Alembic migration run pass for M9.
+- M9 backend/frontend changes were deployed to Cloud Run and Vercel staging.
+- The `0014_knowledge_routing_sla` migration was applied to staging Supabase.
+- Authenticated staging smoke verification passed for knowledge, routing, ticket assignment, approval status, and SLA filtering.
 
-### Frontend Work
+### M10 Backend Work
 
-- Implemented owner/admin knowledge management, routing rule management, and workspace SLA settings in the dashboard settings area.
-- Added agent-visible knowledge source references, routing execution history, SLA due dates, and SLA queue filtering.
+- Added owner/admin support performance, AI quality, and Gmail sync analytics at `GET /v1/orgs/{organization_id}/metrics/admin`.
+- Kept the existing overview metrics endpoint intact for dashboard summary usage.
+- Extended audit-log listing with action, resource type, actor, search, limit, and offset filters while preserving metadata redaction and owner/admin-only access.
+- Added M10 backend test coverage for analytics calculations, role restrictions, and filtered/redacted audit logs.
+
+### M10 Frontend Work
+
+- Added `/dashboard/analytics` for support, AI quality, Gmail sync, SLA, and workload analytics.
+- Added `/dashboard/settings/audit` for audit-log filtering, metadata inspection, and CSV export.
+- Linked analytics from the owner/admin dashboard navigation and audit logs from settings navigation.
 - Frontend typecheck and production build pass locally.
-- Deploy M9 backend/frontend changes, apply the staging migration, and verify the full flow against Cloud Run and Vercel before marking M9 complete.
+
+### M10 Staging Verification
+
+- M10 has been deployed to Cloud Run/Vercel staging and verified with Cloud Run health/readiness checks, authenticated admin analytics smoke testing, audit-log filter checks, Vercel page checks, and bundle verification that the frontend points to Cloud Run.
+
+### M11 Local Verification
+
+- M11 multiple-inbox backend tests and related Gmail/ticket tests pass locally, including saved-view inbox-filter preservation.
+- Frontend production build passes locally.
+- Alembic/staging Supabase now report `0018_widen_gmail_attachment_id` as the current migration head.
+- Staging database migration, Cloud Run backend deploy, and Vercel deploy are complete for M11 multiple inboxes. Staging now has two active Gmail inbox connections in one organization, active sync/watch for both inboxes, future watch expirations, tickets linked to both source inboxes, active import rules for both inboxes, and Cloud Run/Vercel route verification. Saved-view inbox-filter preservation is deployed and backend-tested; signed-in UI creation of such a saved view is the only remaining optional browser smoke.
+
+### M11 Current Limitations
+
+- Attachment metadata capture has been implemented and deployed through Cloud Run staging revision `sift-api-staging-00014-rgm` with the `0016_ticket_attachment_metadata` migration applied to staging.
+- Attachment file storage and signed URL access are implemented behind `ATTACHMENT_STORAGE_BACKEND=gcs`. The `0017_attachment_file_storage` migration is applied to staging, the private bucket exists, object read/write IAM is configured, and Cloud Run env vars are set. Backend signed download-link generation now supports Cloud Run IAM signing and is deployed on revision `sift-api-staging-00023-sbq`; frontend download handling is deployed on Vercel deployment `dpl_2pdPBd87Hd8bzu91YdNTkTkEKb9p`, and a real staging PDF attachment download smoke test returned `200` from Cloud Run and downloaded successfully.
+- A basic attachment malware gate now blocks EICAR test-signature content before upload and records infected attachments; this remains deployed in the current Cloud Run staging line and was included before revision `sift-api-staging-00025-4dp`. Full antivirus scanning beyond this pilot gate, direct send, additional support channels, and paid billing remain deferred.
+- Gemini quota/backoff handling is deployed, focused backend tests pass, and free-only mode now adds `AI_TRIAGE_DAILY_GEMINI_LIMIT` before provider calls. This reduces retry noise but does not increase Gemini quota.
+
 ## Later Milestones
 
 ### Knowledge and Automation
@@ -248,10 +293,5 @@ Replies should become more accurate through workspace knowledge, and ticket owne
 - Confirm staging and production environment variables.
 - Confirm deployed Google OAuth redirect URLs.
 - Confirm deployed CORS origins.
-- Confirm Cloud Run task routes, Pub/Sub push subscriptions, and Cloud Scheduler jobs remain healthy after each staging deploy.
+- Cloud Run task routes, Pub/Sub push subscriptions, Cloud Scheduler jobs, and Error Reporting were rechecked after the latest staging deploy; repeat this after each future staging deploy.
 - Run full end-to-end staging test.
-
-
-
-
-

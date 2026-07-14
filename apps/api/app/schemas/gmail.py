@@ -1,7 +1,7 @@
-﻿from datetime import datetime
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GmailOAuthStartRead(BaseModel):
@@ -22,6 +22,7 @@ class GmailConnectionRead(BaseModel):
     organization_id: str
     connected_by_user_id: str
     gmail_email: str
+    display_name: str | None = None
     google_account_id: str
     scopes: str
     token_key_version: int
@@ -45,6 +46,10 @@ class GmailConnectionRead(BaseModel):
     sync_lock_expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class GmailConnectionUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=120)
 
 
 class GmailSyncEventRead(BaseModel):
@@ -95,6 +100,7 @@ class MailImportRuleRead(BaseModel):
     processed_label_id: str | None = None
     spam_label_id: str | None = None
     import_unread_only: bool
+    routing_direction: str
     is_active: bool
     created_at: datetime
 
@@ -104,6 +110,7 @@ class MailImportRuleUpdate(BaseModel):
     processed_label_id: str | None = None
     spam_label_id: str | None = None
     import_unread_only: bool | None = None
+    routing_direction: Literal["shared_queue", "priority_queue", "specialist_queue"] | None = None
     is_active: bool | None = None
 
 

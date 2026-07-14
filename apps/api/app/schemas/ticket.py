@@ -38,6 +38,34 @@ class TicketAssign(BaseModel):
     assigned_to_user_id: str | None = Field(default=None, max_length=120)
 
 
+
+class TicketAttachmentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    gmail_connection_id: str | None = None
+    gmail_message_id: str | None = None
+    gmail_attachment_id: str | None = None
+    filename: str | None = None
+    mime_type: str | None = None
+    size_bytes: int | None = None
+    content_disposition: str | None = None
+    is_inline: bool
+    policy_status: str
+    storage_status: str
+    scan_status: str
+    stored_at: datetime | None = None
+    notes: str | None = None
+    created_at: datetime
+
+
+
+class AttachmentDownloadUrlResponse(BaseModel):
+    attachment_id: str
+    download_url: str
+    expires_in_seconds: int
+
+
 class TicketRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -46,6 +74,8 @@ class TicketRead(BaseModel):
     customer_id: str
     customer: CustomerRead
     gmail_connection_id: str | None = None
+    gmail_connection_email: str | None = None
+    gmail_connection_display_name: str | None = None
     gmail_message_id: str | None = None
     gmail_thread_id: str | None = None
     subject: str
@@ -68,12 +98,16 @@ class TicketRead(BaseModel):
     sla_status: str
     created_at: datetime
     updated_at: datetime
+    attachments: list[TicketAttachmentRead] = []
 
 
 class TicketListItem(BaseModel):
     id: str
     customer_email: str
     customer_name: str | None = None
+    gmail_connection_id: str | None = None
+    gmail_connection_email: str | None = None
+    gmail_connection_display_name: str | None = None
     gmail_message_id: str | None = None
     gmail_thread_id: str | None = None
     subject: str
@@ -101,4 +135,3 @@ class TicketEventRead(BaseModel):
     event_type: str
     event_metadata: dict
     created_at: datetime
-

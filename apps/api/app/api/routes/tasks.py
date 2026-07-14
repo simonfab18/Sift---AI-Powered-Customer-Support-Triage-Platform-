@@ -88,7 +88,9 @@ def run_gmail_history_sync(envelope: PubSubPushEnvelope, authorization: str | No
 def run_ai_triage(envelope: PubSubPushEnvelope, authorization: str | None = Header(default=None)) -> dict[str, str]:
     payload = _task_payload(envelope, authorization)
     _require_fields(payload, {"job_id"})
-    result_id = run_ai_triage_task(job_id=str(payload["job_id"]))
+    task_status, result_id = run_ai_triage_task(job_id=str(payload["job_id"]))
+    if task_status == "deferred":
+        return {"status": "deferred", "job_id": result_id}
     return {"status": "completed", "ai_triage_result_id": result_id}
 
 

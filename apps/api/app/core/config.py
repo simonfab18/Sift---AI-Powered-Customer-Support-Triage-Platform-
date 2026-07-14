@@ -2,6 +2,30 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def parse_encryption_keyring(raw: str | None) -> dict[int, str]:
+    if not raw:
+        return {}
+
+    parsed: dict[int, str] = {}
+    for item in raw.split(","):
+        entry = item.strip()
+        if not entry:
+            continue
+        if ":" not in entry:
+            raise ValueError("ENCRYPTION_KEYRING entries must use version:key format.")
+        version_text, key = entry.split(":", 1)
+        try:
+            version = int(version_text.strip())
+        except ValueError as exc:
+            raise ValueError("ENCRYPTION_KEYRING versions must be integers.") from exc
+        if version < 1:
+            raise ValueError("ENCRYPTION_KEYRING versions must be positive integers.")
+        if not key.strip():
+            raise ValueError("ENCRYPTION_KEYRING keys must not be empty.")
+        parsed[version] = key.strip()
+    return parsed
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -15,8 +39,10 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./support_triage.db"
     encryption_key: str | None = None
+    encryption_keyring: str | None = None
     frontend_origin: str | None = None
     error_tracking_dsn: str | None = None
+    error_tracking_provider: str = "disabled"
     logging_level: str = "INFO"
     service_name: str = "api"
     release_version: str = "0.1.0"
@@ -67,6 +93,17 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.5-flash"
+    ai_triage_daily_gemini_limit: int = 20
+
+    attachment_storage_backend: str = "disabled"
+    attachment_storage_bucket: str | None = None
+    attachment_signed_url_ttl_seconds: int = 300
+    attachment_signing_service_account_email: str | None = None
+    attachment_malware_scanning_backend: str = "basic"
+
+    @property
+    def encryption_keyring_values(self) -> dict[int, str]:
+        return parse_encryption_keyring(self.encryption_keyring)
 
     @property
     def cors_origins(self) -> list[str]:
@@ -82,8 +119,22 @@ class Settings(BaseSettings):
         return self.app_env.lower().strip()
 
     @property
+    def normalized_error_tracking_provider(self) -> str:
+        if self.error_tracking_dsn and self.error_tracking_provider == "disabled":
+            return "sentry"
+        return self.error_tracking_provider.lower().strip()
+
+    @property
     def normalized_task_queue_backend(self) -> str:
         return self.task_queue_backend.lower().strip()
+
+    @property
+    def normalized_attachment_storage_backend(self) -> str:
+        return self.attachment_storage_backend.lower().strip()
+
+    @property
+    def normalized_attachment_malware_scanning_backend(self) -> str:
+        return self.attachment_malware_scanning_backend.lower().strip()
 
     @property
     def is_production_like(self) -> bool:
@@ -97,8 +148,27 @@ class Settings(BaseSettings):
                 "APP_ENV must be one of local, development, test, staging, or production."
             )
 
+        try:
+            self.encryption_keyring_values
+        except ValueError as exc:
+            raise RuntimeError(str(exc)) from exc
+
+        if self.normalized_error_tracking_provider not in {"disabled", "google-cloud", "sentry"}:
+            raise RuntimeError("ERROR_TRACKING_PROVIDER must be disabled, google-cloud, or sentry.")
+        if self.normalized_error_tracking_provider == "sentry" and not self.error_tracking_dsn:
+            raise RuntimeError("ERROR_TRACKING_DSN is required when ERROR_TRACKING_PROVIDER is sentry.")
+
+        if self.ai_triage_daily_gemini_limit < 0:
+            raise RuntimeError("AI_TRIAGE_DAILY_GEMINI_LIMIT must be zero or greater.")
+
         if self.normalized_task_queue_backend not in {"local", "pubsub"}:
             raise RuntimeError("TASK_QUEUE_BACKEND must be local or pubsub.")
+        if self.normalized_attachment_storage_backend not in {"disabled", "gcs"}:
+            raise RuntimeError("ATTACHMENT_STORAGE_BACKEND must be disabled or gcs.")
+        if self.normalized_attachment_storage_backend == "gcs" and not self.attachment_storage_bucket:
+            raise RuntimeError("ATTACHMENT_STORAGE_BUCKET is required when ATTACHMENT_STORAGE_BACKEND is gcs.")
+        if self.normalized_attachment_malware_scanning_backend not in {"basic", "disabled"}:
+            raise RuntimeError("ATTACHMENT_MALWARE_SCANNING_BACKEND must be basic or disabled.")
 
         if not self.is_production_like:
             return

@@ -1,0 +1,21 @@
+import Link from "next/link";
+
+import { MarketingNav } from "@/components/sift/MarketingNav";
+import { ChartBars, IntegrationCard, MetricCard, StatusPill } from "@/components/sift/SiftComponents";
+import { SiftLogo } from "@/components/sift/SiftLogo";
+import { chartBars, integrations, metrics } from "@/lib/mock-data";
+
+const copy: Record<string, { eyebrow: string; title: string; body: string; items: string[] }> = {
+  product: { eyebrow: "Product", title: "A focused operating system for support triage.", body: "Go deeper into inbox prioritization, AI response drafting, human approval, analytics, automation, team collaboration, customer context, and controls.", items: ["Inbox and triage", "AI response drafting", "Human approval workflow", "Analytics and reporting", "Rules and automation", "Customer context"] },
+  pricing: { eyebrow: "Pricing", title: "Plans that scale with your support queue.", body: "Sample pricing content is shown for frontend testing while final usage limits and billing are prepared.", items: ["Starter · sample", "Team · sample", "Business · sample", "Enterprise · contact"] },
+  security: { eyebrow: "Security", title: "Designed for support data you can trust.", body: "Sift emphasizes tenant isolation, encrypted OAuth storage, approval controls, audit logs, role-based access, and retention controls.", items: ["Encrypted Gmail OAuth tokens", "Workspace-level isolation", "Role-based access", "Approval policies", "Audit logs", "Data retention"] },
+  solutions: { eyebrow: "Solutions", title: "Support workflows for different operating teams.", body: "Use Sift for SaaS support, ecommerce support, marketplace operations, internal IT, and customer success teams.", items: ["SaaS support", "E-commerce support", "Marketplace operations", "Internal IT support", "Customer success"] },
+  resources: { eyebrow: "Resources", title: "Guides for calmer support operations.", body: "Operational playbooks, security notes, onboarding guides, and AI quality resources for support teams.", items: ["Triage playbook", "Approval policy guide", "AI quality checklist", "Gmail setup guide"] },
+  about: { eyebrow: "Company", title: "Sift is built for calm, controlled support work.", body: "The product centers clarity, human control, and operational reliability over autonomous spectacle.", items: ["Calm", "Trustworthy", "Precise", "Human-controlled"] },
+  contact: { eyebrow: "Contact", title: "Talk through your support workflow.", body: "Book a demo, ask about security, or discuss how Sift can fit your Gmail support operation.", items: ["Demo requests", "Security review", "Implementation planning", "Partnerships"] },
+};
+
+export function MarketingPage({ page }: { page: keyof typeof copy }) {
+  const data = copy[page];
+  return <main className="sift-page"><MarketingNav /><section className="section"><div className="sift-container page-title"><span className="eyebrow">{data.eyebrow}</span><h1>{data.title}</h1><p>{data.body}</p><div className="hero-actions"><Link className="button primary" href="/signup">Start free</Link><Link className="button secondary" href="/contact">Book a demo</Link></div></div></section><section className="section" style={{ background: "white", borderBlock: "1px solid var(--border)" }}><div className="sift-container dashboard-grid"><div className="panel"><h2>Highlights</h2>{data.items.map((item) => <p key={item}><StatusPill tone="info">Sift</StatusPill> {item}</p>)}</div><div className="panel"><h2>{page === "pricing" ? "Sample metrics" : "Operational preview"}</h2><ChartBars values={chartBars} /></div></div></section>{page === "product" || page === "security" ? <section className="section"><div className="sift-container metrics-grid">{metrics.map((m) => <MetricCard key={m.label} {...m} />)}</div></section> : null}{page === "product" ? <section className="section" style={{ background: "white" }}><div className="sift-container metrics-grid">{integrations.map((item) => <IntegrationCard key={item.name} {...item} />)}</div></section> : null}<footer className="footer"><div className="sift-container"><SiftLogo /><p>© Sift · Privacy · Terms · Status · Security</p></div></footer></main>;
+}

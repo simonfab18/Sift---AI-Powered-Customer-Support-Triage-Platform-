@@ -11,6 +11,7 @@ from app.models.gmail_sync_event import GmailSyncEvent
 from app.models.member import MemberRole
 from app.schemas.gmail import (
     GmailConnectionRead,
+    GmailConnectionUpdate,
     GmailHistorySyncQueueRead,
     GmailOAuthStartRead,
     GmailSyncEventRead,
@@ -23,6 +24,7 @@ from app.services.gmail_connection_service import (
     complete_gmail_oauth,
     list_gmail_connections,
     list_import_rules,
+    update_gmail_connection,
     revoke_gmail_connection,
     start_gmail_oauth,
     update_import_rule,
@@ -80,6 +82,19 @@ def read_connections(organization_id: str, db: DbSession, current_user: CurrentU
     return list_gmail_connections(db, organization_id, current_user)
 
 
+
+@router.patch(
+    "/orgs/{organization_id}/gmail/connections/{connection_id}",
+    response_model=GmailConnectionRead,
+)
+def patch_connection(
+    organization_id: str,
+    connection_id: str,
+    payload: GmailConnectionUpdate,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    return update_gmail_connection(db, organization_id, connection_id, current_user, payload)
 @router.delete(
     "/orgs/{organization_id}/gmail/connections/{connection_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -203,4 +218,3 @@ def patch_import_rule(
     current_user: CurrentUser,
 ):
     return update_import_rule(db, organization_id, rule_id, current_user, payload)
-

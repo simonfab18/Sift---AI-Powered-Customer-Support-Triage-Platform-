@@ -1,18 +1,27 @@
-﻿# Security and Data Controls
+# Security and Data Controls
 
 ## Secret and Token Lifecycle
 
 Production and staging secrets must live in the hosting/provider secret store, not in source control or frontend bundles.
 
-Required rotation procedure:
+Required rotation procedure for `ENCRYPTION_KEY`:
 
-1. Create the replacement secret in the provider dashboard.
-2. Deploy the API and worker with both the new secret value and incremented `ENCRYPTION_KEY_VERSION` where applicable.
-3. Reconnect Gmail accounts that enter `reauthorization_required`.
-4. Confirm `/v1/orgs/{organization_id}/gmail/connections` shows the new `token_key_version` for reconnected accounts.
-5. Remove the old secret only after no active connection depends on it.
+1. Create the replacement active encryption key in the provider secret store.
+2. Keep the previous key available through backend-only `ENCRYPTION_KEYRING` using `version:key` format.
+3. Deploy the API with the replacement `ENCRYPTION_KEY`, incremented `ENCRYPTION_KEY_VERSION`, and the previous key in `ENCRYPTION_KEYRING`.
+4. Verify existing Gmail connections can still sync and newly connected/reconnected accounts show the new `token_key_version`.
+5. Remove an old key from `ENCRYPTION_KEYRING` only after no active Gmail connection uses that `token_key_version`.
 
-Current limitation: encrypted Gmail refresh tokens are versioned with `token_key_version`, but automatic bulk re-encryption is not implemented yet. Rotation is therefore supported through reconnect/re-authorization until a multi-key decrypt-and-reencrypt job is added.
+Encrypted Gmail refresh tokens are versioned with `token_key_version`, and the backend can decrypt previous key versions through `ENCRYPTION_KEYRING`. Automatic bulk re-encryption is not implemented yet, so old keys must stay configured until affected Gmail accounts reconnect or a future re-encryption job rewrites those tokens.
+
+Staging `ENCRYPTION_KEY` rotation completed on 2026-07-13: the active key is version `2`, and previous Gmail token version `1` remains available through `sift-staging-encryption-keyring`.
+
+
+## Current Secret Store Status
+
+As of 2026-07-13, Cloud Run staging loads these sensitive values from Google Secret Manager: `GOOGLE_CLIENT_SECRET`, `GEMINI_API_KEY`, `ENCRYPTION_KEY`, `SUPABASE_SECRET_KEY`, and `DATABASE_URL`.
+
+This is a secret-store migration for the current values, not full credential rotation. Before a real pilot, create replacement provider-side credentials where applicable, add them as new secret versions, deploy, verify, and revoke the old provider credentials after dependent services are confirmed healthy. Google OAuth client secret rotation requires a Google Cloud Console reset; see `docs/GOOGLE_OAUTH_SECRET_ROTATION.md`.
 
 ## Gmail Reauthorization
 

@@ -2,6 +2,7 @@ import asyncio
 import base64
 from datetime import UTC, datetime, timedelta
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -105,6 +106,53 @@ def test_history_sync_processes_paginated_messages_and_advances_checkpoint(clien
     assert result.messages_imported == 2
     assert connection.gmail_history_id == "102"
     assert len(tickets) == 2
+
+
+def test_history_sync_skips_unfetchable_messages(client, create_org, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "encryption_key", "test-encryption-key")
+    organization = create_org()
+    connection_id = create_history_connection(client, organization["id"])
+
+    async def fake_refresh(refresh_token: str):
+        return "access-token", datetime.now(UTC)
+
+    async def fake_history(access_token: str, start_history_id: str, page_token: str | None = None):
+        return {
+            "historyId": "101",
+            "history": [
+                {
+                    "messagesAdded": [
+                        {"message": {"id": "gmail-bad"}},
+                        {"message": {"id": "gmail-good"}},
+                    ]
+                }
+            ],
+        }
+
+    async def fake_get_message(access_token: str, message_id: str):
+        if message_id == "gmail-bad":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Gmail message fetch failed: status=404; reason=notFound",
+            )
+        return gmail_message(message_id)
+
+    monkeypatch.setattr("app.services.gmail_history_sync_service.refresh_gmail_access_token", fake_refresh)
+    monkeypatch.setattr("app.services.gmail_history_sync_service.list_gmail_history", fake_history)
+    monkeypatch.setattr("app.services.gmail_history_sync_service.get_gmail_message", fake_get_message)
+
+    with client.session_factory() as db:
+        result = asyncio.run(run_gmail_history_sync(db, organization["id"], connection_id))
+        connection = db.get(GmailConnection, connection_id)
+        tickets = list(db.scalars(select(Ticket)))
+
+    assert result.status == "succeeded"
+    assert result.messages_seen == 2
+    assert result.messages_imported == 1
+    assert result.messages_skipped == 1
+    assert result.sync_metadata["message_errors"][0]["message_id"] == "gmail-bad"
+    assert connection.sync_status == "active"
+    assert [ticket.gmail_message_id for ticket in tickets] == ["gmail-good"]
 
 
 def test_history_sync_skips_duplicate_messages(client, create_org, monkeypatch) -> None:

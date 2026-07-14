@@ -1,5 +1,16 @@
 import { getApiBaseUrl } from "@/lib/config";
-import type { GmailConnection, JobRun, MeResponse, Organization, Member } from "@/lib/api-types";
+import type { GmailConnection, JobRun, MailImportRule, MeResponse, Organization, Member } from "@/lib/api-types";
+
+function toApiErrorMessage(errorText: string, status: number) {
+  try {
+    const parsed = JSON.parse(errorText) as { detail?: unknown };
+    if (typeof parsed.detail === "string") return parsed.detail;
+    if (Array.isArray(parsed.detail)) return parsed.detail.map((item) => { const detailItem = item as { msg?: string }; return detailItem.msg ?? JSON.stringify(item); }).join(", ");
+  } catch {
+    // Keep the plain response text below.
+  }
+  return errorText || `Request failed with status ${status}`;
+}
 
 async function apiFetch<T>(path: string, accessToken: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -13,7 +24,7 @@ async function apiFetch<T>(path: string, accessToken: string, init: RequestInit 
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(errorText || `Request failed with status ${response.status}`);
+    throw new Error(toApiErrorMessage(errorText, response.status));
   }
 
   if (response.status === 204) {
@@ -38,6 +49,29 @@ export function getGmailConnections(accessToken: string, organizationId: string)
   return apiFetch<GmailConnection[]>(`/v1/orgs/${organizationId}/gmail/connections`, accessToken);
 }
 
+
+export function updateGmailConnection(accessToken: string, organizationId: string, connectionId: string, payload: { display_name?: string | null }) {
+  return apiFetch<GmailConnection>(`/v1/orgs/${organizationId}/gmail/connections/${connectionId}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getGmailImportRules(accessToken: string, organizationId: string) {
+  return apiFetch<MailImportRule[]>(`/v1/orgs/${organizationId}/gmail/import-rules`, accessToken);
+}
+
+export function updateGmailImportRule(
+  accessToken: string,
+  organizationId: string,
+  ruleId: string,
+  payload: Partial<Pick<MailImportRule, "support_label_id" | "processed_label_id" | "spam_label_id" | "import_unread_only" | "routing_direction" | "is_active">>,
+) {
+  return apiFetch<MailImportRule>(`/v1/orgs/${organizationId}/gmail/import-rules/${ruleId}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
 export function startGmailOAuth(accessToken: string, organizationId: string) {
   return apiFetch<{ auth_url: string; state: string }>(
     `/v1/orgs/${organizationId}/gmail/oauth/start`,
