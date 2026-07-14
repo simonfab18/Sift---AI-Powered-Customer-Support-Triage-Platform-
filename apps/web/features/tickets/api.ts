@@ -451,6 +451,7 @@ export async function updateWorkspaceSettings(
     sync_enabled: boolean;
     draft_creation_enabled: boolean;
     direct_send_enabled: boolean;
+    attachment_ai_processing_enabled: boolean;
     pilot_feedback_contact: string | null;
     business_timezone: string;
     business_hours: Record<string, { start?: string; end?: string }>;

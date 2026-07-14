@@ -275,12 +275,13 @@ Current limitations:
 - Gmail-imported tickets capture attachment metadata: filename, MIME type, size, Gmail attachment ID, inline flag, policy status, storage status, scan status, and stored timestamp when available.
 - Allowed attachments can be explicitly stored from Gmail into a private Google Cloud Storage bucket and opened through short-lived signed URLs after organization/ticket authorization checks.
 - Attachment storage and signed URL creation write audit logs. Blocked MIME/size/malware attachments remain visible as metadata but cannot be stored.
+- Workspace owners/admins can explicitly opt in to future AI processing of stored attachment contents from Settings -> Readiness. The flag is default-off and does not make Gemini read attachments today.
 - Attachment storage includes a basic malware gate that blocks EICAR test-signature content before upload and records `blocked_malware` / `infected`; this backend change remains in the current Cloud Run staging line through revision `sift-api-staging-00025-4dp`. Full antivirus scanning remains a later production hardening item.
 - Gemini quota/backoff handling is deployed, and free-only mode now includes an app-side daily cap (`AI_TRIAGE_DAILY_GEMINI_LIMIT`, default `20`) so the system defers extra triage work instead of repeatedly calling Gemini after the free allowance is reached. This does not increase the Gemini free-tier quota.
 
 Local verification status:
 
-- M11 backend tests, related Gmail/ticket tests, saved-view inbox-filter tests, attachment metadata/storage tests, frontend production build, Ruff, and Alembic head inspection pass locally.
+- M11 backend tests, related Gmail/ticket tests, saved-view inbox-filter tests, attachment metadata/storage tests, workspace attachment AI opt-in tests, frontend production build, Ruff, and Alembic head inspection pass locally.
 
 Current limitations:
 

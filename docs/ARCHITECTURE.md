@@ -81,6 +81,7 @@ Primary responsibilities:
 - Manage reply suggestions, approvals, rejections, and Gmail draft creation.
 - Write audit logs and ticket events.
 - Store allowed Gmail attachments in private Google Cloud Storage and issue short-lived signed download URLs after tenant authorization.
+- Keep AI processing of stored attachment contents behind a default-off workspace owner/admin opt-in; current Gemini triage does not read attachment files.
 
 Important backend areas:
 

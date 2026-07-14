@@ -22,6 +22,7 @@ class WorkspaceSettings(Base):
     sync_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     draft_creation_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
     direct_send_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
+    attachment_ai_processing_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
     pilot_feedback_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
     business_timezone: Mapped[str] = mapped_column(String(80), nullable=False, default="UTC")
     business_hours: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

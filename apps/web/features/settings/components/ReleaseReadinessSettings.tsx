@@ -67,6 +67,7 @@ export function ReleaseReadinessSettings() {
   const [draftCreationEnabled, setDraftCreationEnabled] = useState(true);
   const [draftRequiresApproval, setDraftRequiresApproval] = useState(true);
   const [directSendEnabled, setDirectSendEnabled] = useState(false);
+  const [attachmentAiProcessingEnabled, setAttachmentAiProcessingEnabled] = useState(false);
   const [pilotFeedbackContact, setPilotFeedbackContact] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [aiUsage, setAiUsage] = useState<AITriageUsage | null>(null);
@@ -107,6 +108,7 @@ export function ReleaseReadinessSettings() {
       setDraftCreationEnabled(loaded.draft_creation_enabled);
       setDraftRequiresApproval(loaded.draft_requires_approval);
       setDirectSendEnabled(loaded.direct_send_enabled);
+      setAttachmentAiProcessingEnabled(loaded.attachment_ai_processing_enabled);
       setPilotFeedbackContact(loaded.pilot_feedback_contact ?? "");
       setAiUsage(usage);
     } catch (error) {
@@ -141,6 +143,7 @@ export function ReleaseReadinessSettings() {
         draft_creation_enabled: draftCreationEnabled,
         draft_requires_approval: draftRequiresApproval,
         direct_send_enabled: directSendEnabled,
+        attachment_ai_processing_enabled: attachmentAiProcessingEnabled,
         pilot_feedback_contact: pilotFeedbackContact.trim() || null,
       });
       setSettings(updated);
@@ -228,6 +231,7 @@ export function ReleaseReadinessSettings() {
             <ToggleRow label="Gmail draft creation" description="Allow approved suggestions to create Gmail drafts." checked={draftCreationEnabled} onChange={setDraftCreationEnabled} />
             <ToggleRow label="Approval required" description="Keep humans in control before any Gmail draft is created." checked={draftRequiresApproval} onChange={setDraftRequiresApproval} />
             <ToggleRow label="Direct Gmail send" description="Allow approved replies to be sent from Sift after explicit final confirmation. Keep off during the free pilot unless you are smoke-testing send controls." checked={directSendEnabled} onChange={setDirectSendEnabled} />
+            <ToggleRow label="Attachment AI processing" description="Allow future AI features to inspect stored attachment contents. Keep off unless the workspace owner has explicitly opted in." checked={attachmentAiProcessingEnabled} onChange={setAttachmentAiProcessingEnabled} />
           </div>
           <label className="mt-4 block text-sm font-medium text-slate-700" htmlFor="pilot-feedback-contact">Pilot support contact</label>
           <input id="pilot-feedback-contact" value={pilotFeedbackContact} onChange={(event) => setPilotFeedbackContact(event.target.value)} placeholder="support@example.com" className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900" />
@@ -246,6 +250,7 @@ export function ReleaseReadinessSettings() {
               {aiUsage?.paused_for_today ? <p className="mt-1 text-xs font-medium text-amber-700">AI paused for today. It resets {new Date(aiUsage.resets_at).toLocaleString()}.</p> : null}
             </div>
             <div><dt className="text-slate-500">Send policy</dt><dd className="font-medium">{directSendEnabled ? "Direct send allowed with confirmation" : "Draft only, no direct send"}</dd></div>
+            <div><dt className="text-slate-500">Attachment AI</dt><dd className="font-medium">{attachmentAiProcessingEnabled ? "Opted in" : "Not allowed"}</dd></div>
           </dl>
         </aside>
       </div>
