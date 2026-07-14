@@ -501,7 +501,8 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const displayedCategory = triageFailedWithoutResult ? "Not classified" : ticket?.category.replaceAll("_", " ");
   const displayedReview = triageFailedWithoutResult ? "Not available" : latestTriage?.requires_human_review ? "Required" : "Not flagged";
   const canEdit = latestSuggestion?.status === "suggested" || latestSuggestion?.status === "edited";
-  const canDraft = latestSuggestion?.status === "approved";
+  const draftCreated = latestSuggestion?.status === "draft_created" || Boolean(latestSuggestion?.gmail_draft_id);
+  const canDraft = latestSuggestion?.status === "approved" && !latestSuggestion.gmail_draft_id;
   const directSendReady = latestSuggestion?.status === "approved" || latestSuggestion?.status === "draft_created";
   const sendReplyBody = latestSuggestion ? latestSuggestion.edited_body ?? latestSuggestion.body : "";
   const sendReplySubject = ticket ? replySubject(ticket.subject) : "";
@@ -652,6 +653,21 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                     <span className="capitalize text-slate-600">{displayStatus(latestSuggestion.status)}</span>
                     <span className="font-mono text-xs text-slate-500">v{latestSuggestion.reply_version} / {latestSuggestion.created_by}</span>
                   </div>
+                  {draftCreated ? (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium">Gmail draft created</p>
+                        {latestSuggestion.gmail_draft_id ? <span className="font-mono text-xs">{latestSuggestion.gmail_draft_id}</span> : null}
+                      </div>
+                      <p className="mt-1 text-xs leading-5">This approved reply already has a Gmail draft. Open Gmail drafts if you want to review it in Gmail before sending manually.</p>
+                      <a href="https://mail.google.com/mail/u/0/#drafts" target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium underline">Open Gmail drafts</a>
+                    </div>
+                  ) : latestSuggestion.status === "approved" ? (
+                    <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+                      <p className="font-medium">Approved reply ready</p>
+                      <p className="mt-1 text-xs leading-5">Create a Gmail draft when you are ready. The draft will stay in Gmail for final review.</p>
+                    </div>
+                  ) : null}
                   <textarea
                     value={replyText}
                     onChange={(event) => setReplyText(event.target.value)}
@@ -664,7 +680,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                     <Button type="button" variant="outline" onClick={() => void handleSaveReply()} disabled={!canEdit || savingReply}>{savingReply ? "Saving..." : "Save"}</Button>
                     <Button type="button" variant="primary" onClick={() => void handleApproveReply()} disabled={!canEdit || approvingReply}>{approvingReply ? "Approving..." : "Approve"}</Button>
                     <Button type="button" variant="danger" onClick={() => void handleRejectReply()} disabled={!canEdit || rejectingReply}>{rejectingReply ? "Rejecting..." : "Reject"}</Button>
-                    <Button type="button" variant="primary" onClick={() => void handleCreateDraft()} disabled={!canDraft || creatingDraft}>{creatingDraft ? "Creating..." : "Create draft"}</Button>
+                    <Button type="button" variant="primary" onClick={() => void handleCreateDraft()} disabled={!canDraft || creatingDraft}>{draftCreated ? "Draft created" : creatingDraft ? "Creating..." : "Create draft"}</Button>
                     <div className="sm:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="font-medium text-slate-800">Direct send</p>

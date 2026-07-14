@@ -457,3 +457,21 @@ Verification:
 Follow-up credential rotation:
 
 - Supabase database/pooler password rotation was completed on 2026-07-14. The Cloud Run staging service was restarted against the updated Secret Manager `sift-staging-database-url` value, the old secret version was disabled, and `/health/ready` plus `/v1/status` returned `200` with database status `ok`.
+
+## 2026-07-14 - Attachment AI opt-in migration
+
+Status: Applied and verified in staging Supabase.
+
+- Applied Alembic migration `0021_attachment_ai_optin` to staging Supabase after shortening the revision id to fit the existing `alembic_version.version_num` length.
+- Verified `alembic_version.version_num = 0021_attachment_ai_optin`.
+- Verified `workspace_settings.attachment_ai_processing_enabled` exists with `default=false` and `nullable=NO`.
+## 2026-07-14 - Gmail workflow UI deploy and AI smoke attempt
+
+Status: Backend/frontend deployed; route smoke passed. AI provider smoke blocked by Gemini billing/credits.
+
+- Deployed Cloud Run staging service `sift-api-staging` from `apps/api`; Cloud Run reported revision `sift-api-staging-local-cors-20260714` serving 100% traffic.
+- Cloud Run `/health/ready` returned `200` and `/v1/status` returned `200` after deploy.
+- Deployed Vercel frontend deployment `dpl_APyHgUQ5jpAGgowEbt4NG7Pve1FE` and pointed `https://ai-customer-support-triage-response.vercel.app` to it.
+- Vercel `/dashboard/settings/readiness`, `/dashboard/settings/gmail`, and `/dashboard/tickets` returned `200`.
+- Added UI follow-ups for attachment AI opt-in visibility, Gmail shared-source saved-vs-draft source display, sync/watch next-step guidance, and Gmail draft-created state.
+- Attempted five Gemini triage-v2 provider smoke prompts, but Gemini returned a credits/prepayment depletion error before classifications could be verified.

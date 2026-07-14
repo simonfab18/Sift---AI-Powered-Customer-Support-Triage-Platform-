@@ -267,7 +267,7 @@ Current limitations:
 - Owner/admin users can edit labels for each connected Gmail inbox.
 - Owner/admin users can manage each inbox import rule with support label, unread-only behavior, active state, and routing direction.
 - Owner/admin users can mark a connected Gmail source as an individual inbox, Google Group, or shared mailbox, including a shared/group address and notes. Google Group/shared mailbox sources require a shared address, and switching back to an individual inbox clears the shared address. This keeps Google Groups/shared-mailbox patterns inside the verified Gmail sync path without adding a new channel provider yet.
-- The Gmail settings UI shows multiple connected inboxes with independent sync/watch health, plain-English health guidance, last successful sync, watch expiry, last notification, failure count, active import lock state, manual import, manual history queueing, and recent import context.
+- The Gmail settings UI shows multiple connected inboxes with independent sync/watch health, saved-source labels, plain-English health guidance, last successful sync, last sync start, watch expiry, last notification, Gmail history checkpoint, failure count, active import lock state, manual import, manual history queueing, recent import context, and a per-inbox next-step troubleshooting hint.
 - The ticket queue shows the source inbox for Gmail-created tickets.
 - The ticket queue can filter by source Gmail inbox and Gmail source type, and saved views can preserve those filters; backend sanitization preserves `gmail_connection_id`, `gmail_inbox_type`, and `sla_status` filters.
 - Backend audit logs record Gmail connection label updates and import-rule routing updates.
@@ -275,9 +275,9 @@ Current limitations:
 - Gmail-imported tickets capture attachment metadata: filename, MIME type, size, Gmail attachment ID, inline flag, policy status, storage status, scan status, and stored timestamp when available.
 - Allowed attachments can be explicitly stored from Gmail into a private Google Cloud Storage bucket and opened through short-lived signed URLs after organization/ticket authorization checks.
 - Attachment storage and signed URL creation write audit logs. Blocked MIME/size/malware attachments remain visible as metadata but cannot be stored.
-- Workspace owners/admins can explicitly opt in to future AI processing of stored attachment contents from Settings -> Readiness. The flag is default-off and does not make Gemini read attachments today.
+- Workspace owners/admins can explicitly opt in to future AI processing of stored attachment contents from Settings -> Readiness. The flag is default-off, staging Supabase has migration `0021_attachment_ai_optin`, and current Gemini flows still do not read attachment files.
 - Attachment storage includes a basic malware gate that blocks EICAR test-signature content before upload and records `blocked_malware` / `infected`; this backend change remains in the current Cloud Run staging line through revision `sift-api-staging-00025-4dp`. Full antivirus scanning remains a later production hardening item.
-- Gemini quota/backoff handling is deployed, and free-only mode now includes an app-side daily cap (`AI_TRIAGE_DAILY_GEMINI_LIMIT`, default `20`) so the system defers extra triage work instead of repeatedly calling Gemini after the free allowance is reached. This does not increase the Gemini free-tier quota.
+- Gemini quota/backoff handling is deployed, and free-only mode now includes an app-side daily cap (`AI_TRIAGE_DAILY_GEMINI_LIMIT`, default `20`) so the system defers extra triage work instead of repeatedly calling Gemini after the free allowance is reached. This does not increase Gemini provider quota; the latest triage-v2 smoke attempt was blocked by a Gemini credits/prepayment depletion response.
 
 Local verification status:
 
@@ -320,7 +320,7 @@ Current local mode uses manual server processes. Staging/production async work n
 
 ## P2 Direct Send Controls
 
-- Direct Gmail send controls are implemented and deployed in guarded test-mode posture for approved reply suggestions.
+- Direct Gmail send controls are implemented and deployed in guarded test-mode posture for approved reply suggestions. Ticket detail also surfaces approved-reply readiness, draft-created state, Gmail draft id when available, and the exact direct-send confirmation snapshot.
 - Direct send is disabled by default globally and per workspace. It requires `DIRECT_SEND_ENABLED=true`, workspace `direct_send_enabled=true`, and an explicit final confirmation from the ticket UI.
 - The send request must confirm the exact approved reply version, recipient email, subject, body, and `SEND` confirmation text before the backend records or sends anything. The ticket UI now shows this exact send snapshot before the final confirmation input is enabled.
 - `DIRECT_SEND_TEST_MODE=true` records a test sent-message event without calling Gmail. Cloud Run staging is deployed with `DIRECT_SEND_ENABLED=false` and `DIRECT_SEND_TEST_MODE=true`; real Gmail sends remain off until explicit product approval.

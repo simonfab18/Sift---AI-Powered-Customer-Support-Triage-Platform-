@@ -113,6 +113,29 @@ function isWatchExpiringSoon(value?: string | null) {
   return expiresAt - Date.now() <= twoDaysMs;
 }
 
+
+function syncTroubleshootingSummary(connection: GmailConnection) {
+  if (connection.status === "reauthorization_required" || connection.sync_status === "reauthorization_required" || connection.watch_status === "reauthorization_required") {
+    return "Reconnect Gmail to refresh permission and token access.";
+  }
+  if (connection.watch_status === "error" || connection.watch_status === "degraded") {
+    return "Run Import now, then reconnect Gmail if watch stays degraded. If both fail, check Pub/Sub push and Scheduler.";
+  }
+  if (connection.sync_status === "degraded") {
+    return "Run Import now after any active import finishes. If it fails again, review the latest import error and reconnect Gmail.";
+  }
+  if (connection.watch_expires_at && isWatchExpiringSoon(connection.watch_expires_at)) {
+    return "Watch renewal is due soon. Scheduler should renew it automatically; run watch renewal manually if expiry gets close.";
+  }
+  if (!connection.last_notification_at) {
+    return "No Gmail push notification has arrived yet. Send a test email or run Import now to confirm the inbox path.";
+  }
+  return "No action needed. Push watch and sync are healthy.";
+}
+
+function inputClassName(hasError = false) {
+  return `mt-1 w-full rounded-md border px-3 py-2 text-sm ${hasError ? "border-rose-400 outline-rose-300" : "border-slate-300"}`;
+}
 function connectionHealth(connection: GmailConnection, activeImport?: JobRun) {
   if (activeImport || connection.sync_status === "syncing") {
     return {
@@ -303,7 +326,7 @@ export function GmailConnectionPanel() {
       const updatedConnection = await updateGmailConnection(accessToken, organizationId, connection.id, {
         display_name: draftLabels[connection.id]?.trim() || null,
         inbox_type: connectionMeta.inbox_type,
-        shared_address: connectionMeta.inbox_type === "individual" ? null : connectionMeta.shared_address.trim() || null,
+        shared_address: connectionMeta.inbox_type === "individual" ? null : connectionMeta.shared_address.trim().toLowerCase() || null,
         channel_notes: connectionMeta.channel_notes.trim() || null,
       });
       setConnections((current) => current.map((item) => (item.id === updatedConnection.id ? updatedConnection : item)));
@@ -326,7 +349,6 @@ export function GmailConnectionPanel() {
           is_active: draftRule.is_active ?? true,
         });
       }
-      await loadConnections();
       setMessage("Inbox settings saved.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to save inbox settings.");
@@ -448,7 +470,7 @@ export function GmailConnectionPanel() {
                       <span className={`rounded-md border px-2 py-1 text-xs font-medium ${health.className}`}>{health.label}</span>
                     </div>
                     <p className="mt-1 text-xs text-slate-500">{connection.gmail_email}</p>
-                    <p className="mt-1 text-xs text-slate-500">{sourceLabel}{sourceAddress ? ` / ${sourceAddress}` : ""}</p>
+                    <p className="mt-1 text-xs text-slate-500">Saved source: {sourceLabel}{sourceAddress ? ` / ${sourceAddress}` : ""}</p>
                     <p className="mt-2 text-xs leading-5 text-slate-600">{health.message}</p>
                     <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-md bg-slate-50 p-2">
@@ -470,7 +492,13 @@ export function GmailConnectionPanel() {
                     </div>
                     <div className="mt-2 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
                       <p>Last notification: {formatDateTime(connection.last_notification_at)}</p>
+                      <p>Last sync started: {formatDateTime(connection.last_sync_started_at)}</p>
                       <p>Failures: {connection.consecutive_sync_failures ?? 0}</p>
+                      <p>History checkpoint: {connection.gmail_history_id ?? "Not recorded"}</p>
+                    </div>
+                    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                      <p className="font-medium text-slate-900">Sync/watch next step</p>
+                      <p className="mt-1 leading-5">{syncTroubleshootingSummary(connection)}</p>
                     </div>
                     {activeImport ? (
                       <div className={`mt-3 rounded-md border p-3 text-xs ${isLongRunningImport(activeImport) ? "border-amber-200 bg-amber-50 text-amber-900" : "border-sky-200 bg-sky-50 text-sky-700"}`}>
@@ -527,37 +555,37 @@ export function GmailConnectionPanel() {
                 <div className="mt-4 grid gap-3 lg:grid-cols-4 lg:items-start">
                   <label className="block">
                     <span className="text-xs font-medium text-slate-500">Inbox label</span>
-                    <input value={draftLabels[connection.id] ?? ""} onChange={(event) => setDraftLabels((current) => ({ ...current, [connection.id]: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <input value={draftLabels[connection.id] ?? ""} onChange={(event) => setDraftLabels((current) => ({ ...current, [connection.id]: event.target.value }))} className={inputClassName()} />
                     <span className="mt-1 block min-h-8 text-xs text-transparent">No validation message</span>
                   </label>
                   <label className="block">
                     <span className="text-xs font-medium text-slate-500">Source type</span>
-                    <select value={draftMeta.inbox_type} onChange={(event) => setDraftConnectionMeta((current) => ({ ...current, [connection.id]: { ...draftMeta, inbox_type: event.target.value } }))} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+                    <select value={draftMeta.inbox_type} onChange={(event) => setDraftConnectionMeta((current) => ({ ...current, [connection.id]: { ...draftMeta, inbox_type: event.target.value, shared_address: event.target.value === "individual" ? "" : draftMeta.shared_address } }))} className={`${inputClassName()} bg-white`}>
                       {inboxTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
                     <span className="mt-1 block min-h-8 text-xs text-transparent">No validation message</span>
                   </label>
                   <label className="block">
                     <span className="text-xs font-medium text-slate-500">Group/shared address</span>
-                    <input type="email" inputMode="email" value={draftMeta.shared_address} onChange={(event) => setDraftConnectionMeta((current) => ({ ...current, [connection.id]: { ...draftMeta, shared_address: event.target.value } }))} disabled={draftMeta.inbox_type === "individual"} placeholder="support@example.com" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50" />
+                    <input type="email" inputMode="email" value={draftMeta.shared_address} onChange={(event) => setDraftConnectionMeta((current) => ({ ...current, [connection.id]: { ...draftMeta, shared_address: event.target.value } }))} disabled={draftMeta.inbox_type === "individual"} placeholder="support@example.com" className={`${inputClassName(sharedAddressInvalid || (sharedSourceNeedsAddress && !draftSourceAddress))} disabled:bg-slate-50`} />
                     <span className={`mt-1 block min-h-8 text-xs ${sharedAddressInvalid ? "text-rose-700" : sharedSourceNeedsAddress && !draftSourceAddress ? "text-amber-700" : "text-transparent"}`}>
                       {sharedAddressInvalid ? "Use a valid email address." : sharedSourceNeedsAddress && !draftSourceAddress ? "Enter the group or shared mailbox email before saving." : "No validation message"}
                     </span>
                   </label>
                   <label className="block">
                     <span className="text-xs font-medium text-slate-500">Gmail support label ID</span>
-                    <input value={draftRule?.support_label_id ?? ""} onChange={(event) => setDraftRules((current) => ({ ...current, [connection.id]: { ...(current[connection.id] ?? draftRule), support_label_id: event.target.value || null } }))} placeholder="Optional" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <input value={draftRule?.support_label_id ?? ""} onChange={(event) => setDraftRules((current) => ({ ...current, [connection.id]: { ...(current[connection.id] ?? draftRule), support_label_id: event.target.value || null } }))} placeholder="Optional" className={inputClassName()} />
                     <span className="mt-1 block min-h-8 text-xs text-transparent">No validation message</span>
                   </label>
                   <label className="block">
                     <span className="text-xs font-medium text-slate-500">Routing direction</span>
-                    <select value={draftRule?.routing_direction ?? "shared_queue"} onChange={(event) => setDraftRules((current) => ({ ...current, [connection.id]: { ...(current[connection.id] ?? draftRule), routing_direction: event.target.value } }))} className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+                    <select value={draftRule?.routing_direction ?? "shared_queue"} onChange={(event) => setDraftRules((current) => ({ ...current, [connection.id]: { ...(current[connection.id] ?? draftRule), routing_direction: event.target.value } }))} className={`${inputClassName()} bg-white`}>
                       {routingOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
                   </label>
                   <label className="block lg:col-span-3">
                     <span className="text-xs font-medium text-slate-500">Source notes</span>
-                    <textarea value={draftMeta.channel_notes} onChange={(event) => setDraftConnectionMeta((current) => ({ ...current, [connection.id]: { ...draftMeta, channel_notes: event.target.value } }))} rows={2} placeholder="Example: Google Group forwards to this connected Gmail account." className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <textarea value={draftMeta.channel_notes} onChange={(event) => setDraftConnectionMeta((current) => ({ ...current, [connection.id]: { ...draftMeta, channel_notes: event.target.value } }))} rows={2} placeholder="Example: Google Group forwards to this connected Gmail account." className={inputClassName()} />
                   </label>
                   <button type="button" onClick={() => void handleSaveInbox(connection)} disabled={saveDisabled} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">
                     {savingConnectionId === connection.id ? "Saving..." : "Save"}
