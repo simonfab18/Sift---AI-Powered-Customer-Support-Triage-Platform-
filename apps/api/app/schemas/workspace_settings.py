@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class WorkspaceSettingsRead(BaseModel):
@@ -32,7 +32,7 @@ class WorkspaceSettingsUpdate(BaseModel):
     draft_creation_enabled: bool | None = None
     direct_send_enabled: bool | None = None
     attachment_ai_processing_enabled: bool | None = None
-    pilot_feedback_contact: str | None = Field(default=None, max_length=255)
+    pilot_feedback_contact: EmailStr | None = Field(default=None, max_length=255)
     business_timezone: str | None = Field(default=None, max_length=80)
     business_hours: dict | None = None
     first_review_target_minutes: int | None = Field(default=None, ge=1)

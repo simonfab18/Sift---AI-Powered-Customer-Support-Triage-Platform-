@@ -36,6 +36,15 @@ def test_owner_can_update_workspace_settings(client: TestClient, create_org) -> 
     assert body["auto_triage_enabled"] is False
     assert body["attachment_ai_processing_enabled"] is True
 
+def test_workspace_settings_reject_invalid_pilot_contact(client: TestClient, create_org) -> None:
+    organization = create_org()
+
+    response = client.patch(
+        f"/v1/orgs/{organization['id']}/workspace-settings",
+        json={"pilot_feedback_contact": "not-an-email"},
+    )
+
+    assert response.status_code == 422
 
 def test_agent_cannot_update_workspace_settings(client: TestClient, create_org) -> None:
     organization = create_org()

@@ -65,6 +65,10 @@ function readinessLabel(status: PilotReadinessItem["status"]) {
   return "Needs attention";
 }
 
+function isValidEmailAddress(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 function ToggleRow({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
     <label className="flex items-start justify-between gap-4 rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -145,6 +149,8 @@ export function ReleaseReadinessSettings() {
     [syncEnabled, autoTriageEnabled, draftCreationEnabled, draftRequiresApproval],
   );
 
+  const pilotContactInvalid = Boolean(pilotFeedbackContact.trim()) && !isValidEmailAddress(pilotFeedbackContact);
+
   const pilotReadinessItems = useMemo<PilotReadinessItem[]>(() => [
     {
       label: "Gmail sync",
@@ -174,8 +180,12 @@ export function ReleaseReadinessSettings() {
     },
     {
       label: "Pilot contact",
-      status: pilotFeedbackContact.trim() ? "ready" : "attention",
-      detail: pilotFeedbackContact.trim() ? `Pilot support contact is ${pilotFeedbackContact.trim()}.` : "Add a support contact so pilot users know where to report issues.",
+      status: pilotFeedbackContact.trim() && !pilotContactInvalid ? "ready" : "attention",
+      detail: !pilotFeedbackContact.trim()
+        ? "Add a support contact so pilot users know where to report issues."
+        : pilotContactInvalid
+          ? "Enter a valid email address for the pilot support contact."
+          : `Pilot support contact is ${pilotFeedbackContact.trim()}.`,
     },
     {
       label: "Attachment AI",
@@ -187,7 +197,7 @@ export function ReleaseReadinessSettings() {
       status: "ready",
       detail: "Owner/admin export and deletion-request controls are available from this page.",
     },
-  ], [aiUsage?.paused_for_today, attachmentAiProcessingEnabled, autoTriageEnabled, directSendEnabled, draftCreationEnabled, draftRequiresApproval, pilotFeedbackContact, syncEnabled]);
+  ], [aiUsage?.paused_for_today, attachmentAiProcessingEnabled, autoTriageEnabled, directSendEnabled, draftCreationEnabled, draftRequiresApproval, pilotContactInvalid, pilotFeedbackContact, syncEnabled]);
 
   const pilotAttentionCount = pilotReadinessItems.filter((item) => item.status === "attention").length;
   const pilotReviewCount = pilotReadinessItems.filter((item) => item.status === "review").length;
@@ -195,6 +205,11 @@ export function ReleaseReadinessSettings() {
     const context = await getContext();
     if (!context) {
       setMessage("Select a workspace and sign in before saving release controls.");
+      return;
+    }
+
+    if (pilotContactInvalid) {
+      setMessage("Enter a valid email address for the pilot support contact.");
       return;
     }
 
@@ -298,8 +313,9 @@ export function ReleaseReadinessSettings() {
             <ToggleRow label="Attachment AI processing" description="Allow future AI features to inspect stored attachment contents. Keep off unless the workspace owner has explicitly opted in." checked={attachmentAiProcessingEnabled} onChange={setAttachmentAiProcessingEnabled} />
           </div>
           <label className="mt-4 block text-sm font-medium text-slate-700" htmlFor="pilot-feedback-contact">Pilot support contact</label>
-          <input id="pilot-feedback-contact" value={pilotFeedbackContact} onChange={(event) => setPilotFeedbackContact(event.target.value)} placeholder="support@example.com" className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900" />
-          <Button type="button" variant="primary" className="mt-5" onClick={() => void saveFlags()} disabled={saving}>{saving ? "Saving..." : "Save release controls"}</Button>
+          <input id="pilot-feedback-contact" type="email" inputMode="email" value={pilotFeedbackContact} onChange={(event) => setPilotFeedbackContact(event.target.value)} placeholder="support@example.com" className={`mt-2 w-full rounded-md border px-3 py-2 text-sm outline-none ${pilotContactInvalid ? "border-amber-400 focus:border-amber-600" : "border-slate-300 focus:border-slate-900"}`} />
+          {pilotContactInvalid ? <p className="mt-2 text-xs font-medium text-amber-700">Enter a valid support email before saving.</p> : null}
+          <Button type="button" variant="primary" className="mt-5" onClick={() => void saveFlags()} disabled={saving || pilotContactInvalid}>{saving ? "Saving..." : "Save release controls"}</Button>
           {message ? <p className="mt-4 text-sm text-slate-600">{message}</p> : null}
         </section>
 
