@@ -502,7 +502,10 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const displayedReview = triageFailedWithoutResult ? "Not available" : latestTriage?.requires_human_review ? "Required" : "Not flagged";
   const canEdit = latestSuggestion?.status === "suggested" || latestSuggestion?.status === "edited";
   const canDraft = latestSuggestion?.status === "approved";
-  const canSend = directSendEnabled && (latestSuggestion?.status === "approved" || latestSuggestion?.status === "draft_created") && sendConfirmation === "SEND";
+  const directSendReady = latestSuggestion?.status === "approved" || latestSuggestion?.status === "draft_created";
+  const sendReplyBody = latestSuggestion ? latestSuggestion.edited_body ?? latestSuggestion.body : "";
+  const sendReplySubject = ticket ? replySubject(ticket.subject) : "";
+  const canSend = directSendEnabled && directSendReady && sendConfirmation === "SEND";
 
   if (loading) return <p className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600">Loading ticket...</p>;
 
@@ -661,13 +664,26 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                     <Button type="button" variant="outline" onClick={() => void handleSaveReply()} disabled={!canEdit || savingReply}>{savingReply ? "Saving..." : "Save"}</Button>
                     <Button type="button" variant="primary" onClick={() => void handleApproveReply()} disabled={!canEdit || approvingReply}>{approvingReply ? "Approving..." : "Approve"}</Button>
                     <Button type="button" variant="danger" onClick={() => void handleRejectReply()} disabled={!canEdit || rejectingReply}>{rejectingReply ? "Rejecting..." : "Reject"}</Button>
-                                        <Button type="button" variant="primary" onClick={() => void handleCreateDraft()} disabled={!canDraft || creatingDraft}>{creatingDraft ? "Creating..." : "Create draft"}</Button>
+                    <Button type="button" variant="primary" onClick={() => void handleCreateDraft()} disabled={!canDraft || creatingDraft}>{creatingDraft ? "Creating..." : "Create draft"}</Button>
                     <div className="sm:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
-                      <p className="font-medium text-slate-800">Direct send</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">Sends the approved reply to {ticket.customer.email}. Type SEND to enable final confirmation.</p>
-                      <input value={sendConfirmation} onChange={(event) => setSendConfirmation(event.target.value)} placeholder="Type SEND" className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium text-slate-800">Direct send</p>
+                        <span className={`rounded-md border px-2 py-1 text-xs font-medium ${directSendEnabled ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-500"}`}>
+                          {directSendEnabled ? "Final confirmation required" : "Off"}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">Before sending, Sift verifies this exact recipient, subject, approved version, and reply body.</p>
+                      <dl className="mt-3 grid gap-2 rounded-md border border-slate-200 bg-white p-3 text-xs sm:grid-cols-2">
+                        <div><dt className="text-slate-500">To</dt><dd className="mt-1 break-all font-medium text-slate-800">{ticket.customer.email}</dd></div>
+                        <div><dt className="text-slate-500">Subject</dt><dd className="mt-1 break-words font-medium text-slate-800">{sendReplySubject}</dd></div>
+                        <div><dt className="text-slate-500">Approved version</dt><dd className="mt-1 font-medium text-slate-800">v{latestSuggestion.reply_version}</dd></div>
+                        <div><dt className="text-slate-500">Status</dt><dd className="mt-1 font-medium capitalize text-slate-800">{displayStatus(latestSuggestion.status)}</dd></div>
+                      </dl>
+                      <div className="mt-3 max-h-36 overflow-y-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-700">{sendReplyBody}</div>
+                      <input value={sendConfirmation} onChange={(event) => setSendConfirmation(event.target.value)} disabled={!directSendEnabled || !directSendReady} placeholder="Type SEND" className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
                       <Button type="button" variant="danger" className="mt-2" onClick={() => void handleSendReply()} disabled={!canSend || sendingReply}>{sendingReply ? "Sending..." : "Send reply"}</Button>
                       {!directSendEnabled ? <p className="mt-2 text-xs text-slate-500">Direct send is off in Settings - Readiness.</p> : null}
+                      {directSendEnabled && !directSendReady ? <p className="mt-2 text-xs text-slate-500">Approve the reply before direct send is available.</p> : null}
                     </div>
                   </div>
                 </div>

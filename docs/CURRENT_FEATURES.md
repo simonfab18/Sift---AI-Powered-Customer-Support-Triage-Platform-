@@ -321,7 +321,7 @@ Current local mode uses manual server processes. Staging/production async work n
 
 - Direct Gmail send controls are implemented and deployed in guarded test-mode posture for approved reply suggestions.
 - Direct send is disabled by default globally and per workspace. It requires `DIRECT_SEND_ENABLED=true`, workspace `direct_send_enabled=true`, and an explicit final confirmation from the ticket UI.
-- The send request must confirm the exact approved reply version, recipient email, subject, body, and `SEND` confirmation text before the backend records or sends anything.
+- The send request must confirm the exact approved reply version, recipient email, subject, body, and `SEND` confirmation text before the backend records or sends anything. The ticket UI now shows this exact send snapshot before the final confirmation input is enabled.
 - `DIRECT_SEND_TEST_MODE=true` records a test sent-message event without calling Gmail. Cloud Run staging is deployed with `DIRECT_SEND_ENABLED=false` and `DIRECT_SEND_TEST_MODE=true`; real Gmail sends remain off until explicit product approval.
 - Sent replies create `gmail_sent_messages` records, write `ticket.reply_sent` timeline events, write `gmail.message.sent` audit logs, and resolve the ticket.
 - Staging test-mode smoke passed on 2026-07-14 with a resolved smoke ticket, `test-send-*` message record, ticket timeline event, audit metadata, and audit `resource_id` verification. The staging global direct-send switch was restored to `DIRECT_SEND_ENABLED=false` afterward.
