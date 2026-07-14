@@ -61,3 +61,7 @@ def transition_ticket_status(ticket: Ticket, next_status: str) -> None:
 def ensure_ticket_allows_draft(ticket: Ticket) -> None:
     if ticket.status in TERMINAL_STATUSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Closed tickets cannot create Gmail drafts")
+
+def ensure_ticket_allows_direct_send(ticket: Ticket) -> None:
+    if ticket.status in TERMINAL_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Closed tickets cannot send Gmail replies")

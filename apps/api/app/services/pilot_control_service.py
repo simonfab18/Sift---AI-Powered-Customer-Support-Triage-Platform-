@@ -8,6 +8,7 @@ PILOT_NOT_ALLOWED_DETAIL = "Organization is not enabled for the pilot"
 SYNC_DISABLED_DETAIL = "Gmail sync is disabled for this pilot workspace"
 AUTO_TRIAGE_DISABLED_DETAIL = "Automatic triage is disabled for this pilot workspace"
 DRAFT_DISABLED_DETAIL = "Gmail draft creation is disabled for this pilot workspace"
+DIRECT_SEND_DISABLED_DETAIL = "Direct Gmail sending is disabled for this workspace"
 
 
 def ensure_organization_pilot_allowed(organization_id: str) -> None:
@@ -49,3 +50,10 @@ def ensure_draft_creation_enabled(db: Session, organization_id: str) -> None:
     if not settings.pilot_draft_creation_enabled or not workspace_settings.draft_creation_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=DRAFT_DISABLED_DETAIL)
 
+
+
+def ensure_direct_send_enabled(db: Session, organization_id: str) -> None:
+    ensure_organization_pilot_allowed(organization_id)
+    workspace_settings = get_or_create_workspace_settings(db, organization_id)
+    if not settings.direct_send_enabled or not workspace_settings.direct_send_enabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=DIRECT_SEND_DISABLED_DETAIL)

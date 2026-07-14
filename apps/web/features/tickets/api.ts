@@ -1,10 +1,12 @@
 import type {
   AITriageResult,
+  AITriageUsage,
   AttachmentDownloadUrlResponse,
   AdminAnalytics,
   AuditLog,
   BulkActionResponse,
   CollaborationLock,
+  GmailDirectSendResponse,
   GmailDraftCreateResponse,
   InternalNote,
   InternalNoteEdit,
@@ -47,15 +49,24 @@ function toTicketApiError(errorText: string, status: number) {
 }
 
 async function ticketApiFetch<T>(path: string, accessToken: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      ...(init.headers ?? {}),
-    },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        ...(init.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof TypeError
+        ? "Could not reach the API. Check your connection, then refresh and try again."
+        : "Request failed before the API could respond.",
+    );
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -66,6 +77,7 @@ async function ticketApiFetch<T>(path: string, accessToken: string, init: Reques
   return response.json();
 }
 
+
 export async function getMetricsOverview(organizationId: string, accessToken: string): Promise<MetricsOverview> {
   return ticketApiFetch<MetricsOverview>(`/v1/orgs/${organizationId}/metrics/overview`, accessToken);
 }
@@ -73,13 +85,14 @@ export async function getMetricsOverview(organizationId: string, accessToken: st
 export async function getTickets(
   organizationId: string,
   accessToken: string,
-  filters: { status?: string; priority?: string; sla_status?: string; gmail_connection_id?: string } = {},
+  filters: { status?: string; priority?: string; sla_status?: string; gmail_connection_id?: string; gmail_inbox_type?: string } = {},
 ): Promise<TicketListItem[]> {
   const params = new URLSearchParams();
   if (filters.status && filters.status !== "all") params.set("status", filters.status);
   if (filters.priority && filters.priority !== "all") params.set("priority", filters.priority);
   if (filters.sla_status && filters.sla_status !== "all") params.set("sla_status", filters.sla_status);
   if (filters.gmail_connection_id && filters.gmail_connection_id !== "all") params.set("gmail_connection_id", filters.gmail_connection_id);
+  if (filters.gmail_inbox_type && filters.gmail_inbox_type !== "all") params.set("gmail_inbox_type", filters.gmail_inbox_type);
   const query = params.toString() ? `?${params.toString()}` : "";
   return ticketApiFetch<TicketListItem[]>(`/v1/orgs/${organizationId}/tickets${query}`, accessToken);
 }
@@ -121,6 +134,9 @@ export async function runTicketTriage(organizationId: string, ticketId: string, 
   return ticketApiFetch<AITriageResult>(`/v1/orgs/${organizationId}/tickets/${ticketId}/triage`, accessToken, { method: "POST" });
 }
 
+export async function getAiTriageUsage(organizationId: string, accessToken: string): Promise<AITriageUsage> {
+  return ticketApiFetch<AITriageUsage>(`/v1/orgs/${organizationId}/ai/usage`, accessToken);
+}
 export async function getTicketTriageResults(organizationId: string, ticketId: string, accessToken: string): Promise<AITriageResult[]> {
   return ticketApiFetch<AITriageResult[]>(`/v1/orgs/${organizationId}/tickets/${ticketId}/triage-results`, accessToken);
 }
@@ -158,6 +174,20 @@ export async function createGmailDraftFromSuggestion(
     `/v1/orgs/${organizationId}/reply-suggestions/${suggestionId}/create-gmail-draft`,
     accessToken,
     { method: "POST" },
+  );
+}
+
+
+export async function sendGmailReplyFromSuggestion(
+  organizationId: string,
+  suggestionId: string,
+  accessToken: string,
+  payload: { reply_version: number; confirm_recipient_email: string; confirm_subject: string; confirm_body: string; confirmation_text: "SEND" },
+): Promise<GmailDirectSendResponse> {
+  return ticketApiFetch<GmailDirectSendResponse>(
+    `/v1/orgs/${organizationId}/reply-suggestions/${suggestionId}/send-gmail-reply`,
+    accessToken,
+    { method: "POST", body: JSON.stringify(payload) },
   );
 }
 
@@ -399,6 +429,7 @@ export async function updateWorkspaceSettings(
     draft_requires_approval: boolean;
     sync_enabled: boolean;
     draft_creation_enabled: boolean;
+    direct_send_enabled: boolean;
     pilot_feedback_contact: string | null;
     business_timezone: string;
     business_hours: Record<string, { start?: string; end?: string }>;

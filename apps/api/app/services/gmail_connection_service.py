@@ -26,6 +26,7 @@ from app.services.pilot_control_service import ensure_organization_pilot_allowed
 from app.services.rbac_service import require_membership, require_role
 
 OAUTH_STATE_TTL_MINUTES = 10
+SHARED_SOURCE_TYPES = {"google_group", "shared_mailbox"}
 
 
 def start_gmail_oauth(db: Session, organization_id: str, actor: AuthenticatedUser) -> tuple[str, str]:
@@ -225,6 +226,21 @@ def update_gmail_connection(
     if "display_name" in update_data:
         next_name = update_data["display_name"]
         connection.display_name = next_name.strip() if isinstance(next_name, str) and next_name.strip() else None
+    if "inbox_type" in update_data and update_data["inbox_type"] is not None:
+        connection.inbox_type = update_data["inbox_type"]
+    if "shared_address" in update_data:
+        next_address = update_data["shared_address"]
+        connection.shared_address = str(next_address).strip().lower() if next_address else None
+    if "channel_notes" in update_data:
+        next_notes = update_data["channel_notes"]
+        connection.channel_notes = next_notes.strip() if isinstance(next_notes, str) and next_notes.strip() else None
+    if connection.inbox_type == "individual":
+        connection.shared_address = None
+    elif connection.inbox_type in SHARED_SOURCE_TYPES and not connection.shared_address:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Shared Gmail source address is required for Google Group or shared mailbox sources",
+        )
 
     create_audit_log(
         db,
@@ -233,7 +249,7 @@ def update_gmail_connection(
         action="gmail.connection.updated",
         resource_type="gmail_connection",
         resource_id=connection.id,
-        metadata={"display_name": connection.display_name, "gmail_email": connection.gmail_email},
+        metadata={"display_name": connection.display_name, "gmail_email": connection.gmail_email, "inbox_type": connection.inbox_type, "shared_address": connection.shared_address},
     )
     db.commit()
     db.refresh(connection)

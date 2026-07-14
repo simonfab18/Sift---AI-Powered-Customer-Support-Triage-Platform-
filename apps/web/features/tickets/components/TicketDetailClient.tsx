@@ -18,6 +18,7 @@ import {
   getInternalNotes,
   getReplySuggestions,
   getResponseTemplates,
+  getWorkspaceSettings,
   getTicket,
   getTicketAttachmentDownloadUrl,
   getTicketRoutingExecutions,
@@ -27,6 +28,7 @@ import {
   rejectReplySuggestion,
   releaseCollaborationLock,
   runTicketTriage,
+  sendGmailReplyFromSuggestion,
   storeTicketAttachment,
   updateInternalNote,
   updateReplySuggestion,
@@ -67,6 +69,10 @@ function attachmentStatusClass(status: string) {
   return "border-slate-200 bg-slate-50 text-slate-600";
 }
 
+function replySubject(subject: string) {
+  return subject.toLowerCase().startsWith("re:") ? subject : `Re: ${subject}`;
+}
+
 function displayAttachmentStatus(status: string) {
   return status.replaceAll("_", " ");
 }
@@ -97,6 +103,9 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const [approvingReply, setApprovingReply] = useState(false);
   const [rejectingReply, setRejectingReply] = useState(false);
   const [creatingDraft, setCreatingDraft] = useState(false);
+  const [sendingReply, setSendingReply] = useState(false);
+  const [directSendEnabled, setDirectSendEnabled] = useState(false);
+  const [sendConfirmation, setSendConfirmation] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [processingAttachmentId, setProcessingAttachmentId] = useState<string | null>(null);
 
@@ -130,13 +139,14 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
       const loadedTicket = await getTicket(context.organizationId, ticketId, context.accessToken);
       setTicket(loadedTicket);
 
-      const [loadedEvents, loadedResults, loadedSuggestions, loadedTemplates, loadedNotes, loadedRoutingExecutions] = await Promise.all([
+      const [loadedEvents, loadedResults, loadedSuggestions, loadedTemplates, loadedNotes, loadedRoutingExecutions, loadedSettings] = await Promise.all([
         getTicketEvents(context.organizationId, ticketId, context.accessToken).catch(() => []),
         getTicketTriageResults(context.organizationId, ticketId, context.accessToken).catch(() => []),
         getReplySuggestions(context.organizationId, ticketId, context.accessToken).catch(() => []),
         getResponseTemplates(context.organizationId, context.accessToken).catch(() => []),
         getInternalNotes(context.organizationId, ticketId, context.accessToken).catch(() => []),
         getTicketRoutingExecutions(context.organizationId, ticketId, context.accessToken).catch(() => []),
+        getWorkspaceSettings(context.organizationId, context.accessToken).catch(() => null),
       ]);
       setEvents(loadedEvents);
       setTriageResults(loadedResults);
@@ -144,6 +154,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
       setTemplates(loadedTemplates);
       setNotes(loadedNotes);
       setRoutingExecutions(loadedRoutingExecutions);
+      setDirectSendEnabled(Boolean(loadedSettings?.direct_send_enabled));
       const latestSuggestion = loadedSuggestions[0];
       setReplyText(latestSuggestion?.edited_body ?? latestSuggestion?.body ?? "");
     } catch (error) {
@@ -285,6 +296,31 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     }
   }
 
+
+  async function handleSendReply() {
+    const latestSuggestion = replySuggestions[0];
+    const context = await getSessionContext();
+    if (!latestSuggestion || !ticket || !context) return;
+    setSendingReply(true);
+    setMessage(null);
+    try {
+      const finalBody = latestSuggestion.edited_body ?? latestSuggestion.body;
+      const result = await sendGmailReplyFromSuggestion(context.organizationId, latestSuggestion.id, context.accessToken, {
+        reply_version: latestSuggestion.reply_version,
+        confirm_recipient_email: ticket.customer.email,
+        confirm_subject: replySubject(ticket.subject),
+        confirm_body: finalBody,
+        confirmation_text: "SEND",
+      });
+      setSendConfirmation("");
+      await loadTicket();
+      setMessage(result.test_mode ? `Test send recorded: ${result.gmail_message_id}` : `Gmail reply sent: ${result.gmail_message_id}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to send Gmail reply.");
+    } finally {
+      setSendingReply(false);
+    }
+  }
   async function handleInsertTemplate(templateId: string) {
     const context = await getSessionContext();
     if (!context) return;
@@ -414,8 +450,12 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
 
   const latestTriage = triageResults[0];
   const latestSuggestion = replySuggestions[0];
+  const triageFailedWithoutResult = ticket?.triage_status === "triage_failed" && !latestTriage;
+  const displayedCategory = triageFailedWithoutResult ? "Not classified" : ticket?.category.replaceAll("_", " ");
+  const displayedReview = triageFailedWithoutResult ? "Not available" : latestTriage?.requires_human_review ? "Required" : "Not flagged";
   const canEdit = latestSuggestion?.status === "suggested" || latestSuggestion?.status === "edited";
   const canDraft = latestSuggestion?.status === "approved";
+  const canSend = directSendEnabled && (latestSuggestion?.status === "approved" || latestSuggestion?.status === "draft_created") && sendConfirmation === "SEND";
 
   if (loading) return <p className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600">Loading ticket...</p>;
 
@@ -501,13 +541,19 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                 <Button type="button" variant="outline" onClick={() => void handleRunTriage()} disabled={triaging}>{triaging ? "Running..." : "Regenerate"}</Button>
               </div>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div><dt className="text-slate-500">Urgency</dt><dd className="mt-1"><UrgencyBadge priority={ticket.priority} /></dd></div>
-                <div><dt className="text-slate-500">Category</dt><dd className="mt-1 font-medium capitalize">{ticket.category.replaceAll("_", " ")}</dd></div>
+                <div><dt className="text-slate-500">Urgency</dt><dd className="mt-1">{triageFailedWithoutResult ? <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Not classified</span> : <UrgencyBadge priority={ticket.priority} />}</dd></div>
+                <div><dt className="text-slate-500">Category</dt><dd className="mt-1 font-medium capitalize">{displayedCategory}</dd></div>
                 <div><dt className="text-slate-500">Triage</dt><dd className="mt-1 font-medium capitalize">{ticket.triage_status.replaceAll("_", " ")}</dd></div>
-                <div><dt className="text-slate-500">Review</dt><dd className="mt-1 font-medium">{latestTriage?.requires_human_review ? "Required" : "Not flagged"}</dd></div>
+                <div><dt className="text-slate-500">Review</dt><dd className="mt-1 font-medium">{displayedReview}</dd></div>
                 <div><dt className="text-slate-500">First review due</dt><dd className="mt-1 font-medium">{ticket.first_review_due_at ? new Date(ticket.first_review_due_at).toLocaleString() : "Not set"}</dd></div>
                 <div><dt className="text-slate-500">Resolution due</dt><dd className="mt-1 font-medium">{ticket.resolution_due_at ? new Date(ticket.resolution_due_at).toLocaleString() : "Not set"}</dd></div>
               </dl>
+              {triageFailedWithoutResult ? (
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  AI triage did not complete. The default urgency/category values are hidden because they are not an AI classification.
+                  {ticket.triage_error_message ? <span className="mt-2 block">Reason: {ticket.triage_error_message}</span> : null}
+                </div>
+              ) : null}
               {latestTriage ? (
                 <div className="mt-4 border-t border-slate-200 pt-4 text-sm">
                   <p className="font-medium">Reasoning</p>
@@ -568,7 +614,14 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                     <Button type="button" variant="outline" onClick={() => void handleSaveReply()} disabled={!canEdit || savingReply}>{savingReply ? "Saving..." : "Save"}</Button>
                     <Button type="button" variant="primary" onClick={() => void handleApproveReply()} disabled={!canEdit || approvingReply}>{approvingReply ? "Approving..." : "Approve"}</Button>
                     <Button type="button" variant="danger" onClick={() => void handleRejectReply()} disabled={!canEdit || rejectingReply}>{rejectingReply ? "Rejecting..." : "Reject"}</Button>
-                    <Button type="button" variant="primary" onClick={() => void handleCreateDraft()} disabled={!canDraft || creatingDraft}>{creatingDraft ? "Creating..." : "Create draft"}</Button>
+                                        <Button type="button" variant="primary" onClick={() => void handleCreateDraft()} disabled={!canDraft || creatingDraft}>{creatingDraft ? "Creating..." : "Create draft"}</Button>
+                    <div className="sm:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                      <p className="font-medium text-slate-800">Direct send</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">Sends the approved reply to {ticket.customer.email}. Type SEND to enable final confirmation.</p>
+                      <input value={sendConfirmation} onChange={(event) => setSendConfirmation(event.target.value)} placeholder="Type SEND" className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                      <Button type="button" variant="danger" className="mt-2" onClick={() => void handleSendReply()} disabled={!canSend || sendingReply}>{sendingReply ? "Sending..." : "Send reply"}</Button>
+                      {!directSendEnabled ? <p className="mt-2 text-xs text-slate-500">Direct send is off in Settings - Readiness.</p> : null}
+                    </div>
                   </div>
                 </div>
               )}

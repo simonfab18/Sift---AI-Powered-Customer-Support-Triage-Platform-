@@ -4,7 +4,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.models.ai_triage_result import AITriageResult
-from app.models.gmail_connection import GmailConnection
 from app.models.gmail_sync_event import GmailSyncEvent
 from app.models.job_run import JobRun
 from app.models.member import MemberRole, OrganizationMember

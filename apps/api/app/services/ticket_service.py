@@ -107,6 +107,7 @@ def list_tickets(
     limit: int = 50,
     offset: int = 0,
     gmail_connection_id_filter: str | None = None,
+    gmail_inbox_type_filter: str | None = None,
 ) -> list[TicketListItem]:
     require_membership(db, organization_id, actor)
     priority_rank = case(
@@ -132,6 +133,11 @@ def list_tickets(
         statement = statement.where(Ticket.sla_status == sla_status_filter)
     if gmail_connection_id_filter:
         statement = statement.where(Ticket.gmail_connection_id == gmail_connection_id_filter)
+    if gmail_inbox_type_filter and gmail_inbox_type_filter != "all":
+        statement = statement.join(GmailConnection, Ticket.gmail_connection_id == GmailConnection.id).where(
+            GmailConnection.organization_id == organization_id,
+            GmailConnection.inbox_type == gmail_inbox_type_filter,
+        )
 
     tickets = db.scalars(statement.limit(limit).offset(offset)).all()
     connection_ids = {ticket.gmail_connection_id for ticket in tickets if ticket.gmail_connection_id}
@@ -154,6 +160,8 @@ def list_tickets(
             gmail_connection_id=ticket.gmail_connection_id,
             gmail_connection_email=connections[ticket.gmail_connection_id].gmail_email if ticket.gmail_connection_id in connections else None,
             gmail_connection_display_name=connections[ticket.gmail_connection_id].display_name if ticket.gmail_connection_id in connections else None,
+            gmail_connection_inbox_type=connections[ticket.gmail_connection_id].inbox_type if ticket.gmail_connection_id in connections else None,
+            gmail_connection_shared_address=connections[ticket.gmail_connection_id].shared_address if ticket.gmail_connection_id in connections else None,
             gmail_message_id=ticket.gmail_message_id,
             gmail_thread_id=ticket.gmail_thread_id,
             subject=ticket.subject,

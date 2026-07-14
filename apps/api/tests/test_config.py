@@ -103,3 +103,9 @@ def test_ai_triage_daily_gemini_limit_cannot_be_negative():
 
     with pytest.raises(RuntimeError, match="AI_TRIAGE_DAILY_GEMINI_LIMIT"):
         settings.validate_runtime_settings()
+
+def test_ai_triage_daily_gemini_org_limit_cannot_be_negative():
+    settings = Settings(_env_file=None, app_env="local", ai_triage_daily_gemini_org_limit=-1)
+
+    with pytest.raises(RuntimeError, match="AI_TRIAGE_DAILY_GEMINI_ORG_LIMIT"):
+        settings.validate_runtime_settings()

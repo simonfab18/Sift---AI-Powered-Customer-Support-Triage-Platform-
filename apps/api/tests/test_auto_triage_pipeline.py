@@ -208,12 +208,32 @@ def test_free_tier_daily_limit_defers_without_calling_gemini(
         results = list(db.scalars(select(AITriageResult).where(AITriageResult.ticket_id == ticket["id"])))
 
     assert failed_ticket.triage_status == "triage_failed"
-    assert failed_ticket.triage_error_message == "Gemini free-tier daily triage limit reached; retry after the next UTC day."
+    assert failed_ticket.triage_error_message == "AI triage is paused for today because the free Gemini daily limit was reached; retry after the next UTC day."
     assert failed_job.status == "failed"
     assert failed_job.error_code == "quota_exceeded"
     assert failed_job.retryable is True
     assert failed_job.next_retry_at is not None
     assert results == []
+
+
+def test_ai_triage_usage_endpoint_counts_today(client: TestClient, create_org) -> None:
+    organization = create_org()
+    create_api_ticket(client, organization["id"])
+
+    with client.session_factory() as db:
+        job = db.scalar(select(JobRun).where(JobRun.job_type == "ai_triage"))
+        job.started_at = datetime.now(UTC)
+        db.commit()
+
+    response = client.get(f"/v1/orgs/{organization['id']}/ai/usage")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["daily_limit"] == 20
+    assert payload["used"] == 1
+    assert payload["remaining"] == 19
+    assert payload["paused_for_today"] is False
+    assert payload["per_inbox"] == [{"gmail_connection_id": None, "gmail_email": None, "used": 1}]
 
 def test_failed_triage_is_visible_and_retryable(client: TestClient, create_org, monkeypatch, stub_auto_triage_dispatch) -> None:
     organization = create_org()

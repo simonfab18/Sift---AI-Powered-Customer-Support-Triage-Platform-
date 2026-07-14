@@ -12,13 +12,15 @@ from app.integrations.gmail.mapper import NormalizedGmailMessage
 from app.api.deps import AuthenticatedUser
 
 
-def _create_connection(client: TestClient, organization_id: str, email: str, display_name: str | None = None) -> tuple[str, str]:
+def _create_connection(client: TestClient, organization_id: str, email: str, display_name: str | None = None, inbox_type: str = "individual", shared_address: str | None = None) -> tuple[str, str]:
     with client.session_factory() as db:
         connection = GmailConnection(
             organization_id=organization_id,
             connected_by_user_id="user-owner",
             gmail_email=email,
             display_name=display_name,
+            inbox_type=inbox_type,
+            shared_address=shared_address,
             google_account_id=f"google-{email}",
             encrypted_refresh_token="encrypted-token",
             scopes="openid email https://www.googleapis.com/auth/gmail.modify",
@@ -120,8 +122,8 @@ def test_saved_view_preserves_source_inbox_filter(client: TestClient, create_org
 
 def test_ticket_queue_exposes_and_filters_source_inbox(client: TestClient, create_org) -> None:
     organization = create_org()
-    support_id, _ = _create_connection(client, organization["id"], "support@example.com", "Support")
-    returns_id, _ = _create_connection(client, organization["id"], "returns@example.com", "Returns")
+    support_id, _ = _create_connection(client, organization["id"], "support@example.com", "Support", inbox_type="google_group", shared_address="support-group@example.com")
+    returns_id, _ = _create_connection(client, organization["id"], "returns@example.com", "Returns", inbox_type="shared_mailbox", shared_address="returns@example.com")
     actor = AuthenticatedUser(id="user-owner", email="owner@example.com")
 
     with client.session_factory() as db:
@@ -163,10 +165,18 @@ def test_ticket_queue_exposes_and_filters_source_inbox(client: TestClient, creat
 
     all_response = client.get(f"/v1/orgs/{organization['id']}/tickets?status=all")
     filtered_response = client.get(f"/v1/orgs/{organization['id']}/tickets?status=all&gmail_connection_id={returns_id}")
+    group_response = client.get(f"/v1/orgs/{organization['id']}/tickets?status=all&gmail_inbox_type=google_group")
 
     assert all_response.status_code == 200
     assert {ticket["gmail_connection_display_name"] for ticket in all_response.json()} == {"Support", "Returns"}
+    by_subject = {ticket["subject"]: ticket for ticket in all_response.json()}
+    assert by_subject["Support question"]["gmail_connection_inbox_type"] == "google_group"
+    assert by_subject["Support question"]["gmail_connection_shared_address"] == "support-group@example.com"
+    assert by_subject["Return question"]["gmail_connection_inbox_type"] == "shared_mailbox"
     assert filtered_response.status_code == 200
     assert len(filtered_response.json()) == 1
     assert filtered_response.json()[0]["subject"] == "Return question"
     assert filtered_response.json()[0]["gmail_connection_email"] == "returns@example.com"
+    assert group_response.status_code == 200
+    assert len(group_response.json()) == 1
+    assert group_response.json()[0]["subject"] == "Support question"

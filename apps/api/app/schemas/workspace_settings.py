@@ -13,6 +13,7 @@ class WorkspaceSettingsRead(BaseModel):
     draft_requires_approval: bool
     sync_enabled: bool
     draft_creation_enabled: bool
+    direct_send_enabled: bool
     pilot_feedback_contact: str | None
     business_timezone: str
     business_hours: dict
@@ -28,9 +29,9 @@ class WorkspaceSettingsUpdate(BaseModel):
     draft_requires_approval: bool | None = None
     sync_enabled: bool | None = None
     draft_creation_enabled: bool | None = None
+    direct_send_enabled: bool | None = None
     pilot_feedback_contact: str | None = Field(default=None, max_length=255)
     business_timezone: str | None = Field(default=None, max_length=80)
     business_hours: dict | None = None
     first_review_target_minutes: int | None = Field(default=None, ge=1)
     resolution_target_minutes: int | None = Field(default=None, ge=1)
-

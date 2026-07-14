@@ -7,11 +7,12 @@ const settings = [
   { href: "/dashboard/settings/knowledge", label: "Knowledge", description: "Policies, FAQs, product facts, and source control" },
   { href: "/dashboard/settings/routing", label: "Routing", description: "Assignment rules, priority floors, and approval gates" },
   { href: "/dashboard/settings/audit", label: "Audit", description: "Activity filters, metadata review, and export" },
+  { href: "/dashboard/settings/readiness", label: "Readiness", description: "Pilot flags, lifecycle messages, and release process" },
 ];
 
 export function SettingsNav() {
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
       {settings.map((item) => (
         <Link key={item.href} href={item.href} className="rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-300">
           <p className="font-display text-lg font-semibold text-slate-900">{item.label}</p>

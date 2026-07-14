@@ -963,12 +963,18 @@ Requirements:
 - Rate limits
 - Test mode
 
+Current status:
+
+- Guarded direct-send foundation is implemented and deployed with global/workspace kill switches, exact confirmation, test mode, sent-message records, audit logs, and ticket timeline events.
+- Live Gmail sending remains disabled by default. Cloud Run staging has the global direct-send switch off and test mode on; enabling test-mode send requires explicit approval.
+- Direct-send test-mode staging smoke passed on 2026-07-14; live sending remains deferred.
+
 ### Additional channels
 
 Potential order:
 
 1. Additional Gmail inboxes
-2. Google Groups or shared mailbox patterns
+2. Google Groups or shared mailbox patterns - implemented as Gmail source metadata, admin UI controls, source badges, and source-type queue filtering
 3. Microsoft Outlook
 4. Web form
 5. Chat channels

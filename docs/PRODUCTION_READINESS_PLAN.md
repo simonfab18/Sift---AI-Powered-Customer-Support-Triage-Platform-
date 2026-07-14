@@ -992,6 +992,7 @@ Make onboarding repeatable beyond the first pilot.
 - Email and in-app lifecycle communications
 - Self-service organization export and deletion direction
 - Feature flags and controlled migrations
+Current implementation status: Phase 8 implementation is complete in the codebase. A connected dashboard onboarding checklist now guides workspace setup, workspace defaults, Gmail connection health, import, first draft review, and team invitation. Gmail connection troubleshooting guidance is shown for degraded or reconnect-needed inboxes. Public pilot pages now exist for support, status, privacy, terms, and data processing. Settings -> Readiness now surfaces workspace feature flags, pilot support contact, lifecycle communication templates, daily free-tier AI usage, downloadable organization export, deletion request intake, and controlled migration checks. The backend exposes owner/admin AI usage visibility and pauses additional AI triage after the configured free-only daily Gemini cap. Legal review is documented in `docs/LEGAL_REVIEW_CHECKLIST.md` but remains pending external approval before public commercial launch. Future operator-reviewed hard deletion is documented in `docs/HARD_DELETION_POLICY.md` and remains deferred until product/legal approval.
 
 ---
 
@@ -1005,7 +1006,7 @@ Make onboarding repeatable beyond the first pilot.
 4. Incremental history sync - completed in M2
 5. Idempotency and per-connection locking - completed in M2
 6. Fallback sync and expired-history recovery - completed in M2
-7. Sync status UI - backend status endpoints completed in M2; UI polish remains
+7. Sync status UI - completed; signed-in Gmail health-card smoke passed for both connected inboxes
 8. Automatic triage queue - completed in M3
 9. Core lifecycle and approval consistency - completed in M4
 10. Worker retries and failed-job visibility

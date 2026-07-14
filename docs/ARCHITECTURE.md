@@ -106,7 +106,7 @@ Core tables/models:
 - `customers`
 - `tickets`
 - `ticket_events`
-- `gmail_connections` (includes owner/admin display labels and per-connection sync/watch status)
+- `gmail_connections` (includes owner/admin display labels, individual/Google Group/shared mailbox source metadata, and per-connection sync/watch status)
 - `gmail_oauth_states`
 - `mail_import_rules` (includes per-inbox label mapping, unread-only import behavior, active state, and routing direction metadata)
 - `job_runs`
@@ -160,7 +160,7 @@ sequenceDiagram
     API-->>Web: Import summary
 ```
 
-Current behavior supports multiple Gmail inboxes per organization, manual import, authenticated Gmail push notifications through Google Cloud Pub/Sub, Pub/Sub-dispatched Gmail history sync, and Cloud Scheduler-triggered fallback sync discovery. Gmail-created tickets retain their source connection for queue labels and filtering. New tickets created manually or through Gmail import initialize SLA due dates and run active organization routing rules. M7 pilot controls can pause sync/watch behavior globally or per workspace without deleting connected Gmail data.
+Current behavior supports multiple Gmail inboxes per organization, manual import, authenticated Gmail push notifications through Google Cloud Pub/Sub, Pub/Sub-dispatched Gmail history sync, and Cloud Scheduler-triggered fallback sync discovery. Gmail-created tickets retain their source connection for queue labels and filtering. Owner/admin source metadata can distinguish individual inboxes, Google Groups, and shared mailboxes; group/shared sources require a shared address, and individual inboxes do not retain one. New tickets created manually or through Gmail import initialize SLA due dates and run active organization routing rules. M7 pilot controls can pause sync/watch behavior globally or per workspace without deleting connected Gmail data.
 
 ## AI Triage Flow
 

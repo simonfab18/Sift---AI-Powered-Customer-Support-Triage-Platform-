@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     pilot_sync_enabled: bool = True
     pilot_auto_triage_enabled: bool = True
     pilot_draft_creation_enabled: bool = True
+    direct_send_enabled: bool = False
+    direct_send_test_mode: bool = True
     sync_fallback_interval_minutes: int = 15
     watch_renewal_schedule: str = "0 3 * * *"
 
@@ -94,6 +96,7 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.5-flash"
     ai_triage_daily_gemini_limit: int = 20
+    ai_triage_daily_gemini_org_limit: int = 20
 
     attachment_storage_backend: str = "disabled"
     attachment_storage_bucket: str | None = None
@@ -160,6 +163,8 @@ class Settings(BaseSettings):
 
         if self.ai_triage_daily_gemini_limit < 0:
             raise RuntimeError("AI_TRIAGE_DAILY_GEMINI_LIMIT must be zero or greater.")
+        if self.ai_triage_daily_gemini_org_limit < 0:
+            raise RuntimeError("AI_TRIAGE_DAILY_GEMINI_ORG_LIMIT must be zero or greater.")
 
         if self.normalized_task_queue_backend not in {"local", "pubsub"}:
             raise RuntimeError("TASK_QUEUE_BACKEND must be local or pubsub.")

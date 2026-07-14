@@ -27,6 +27,7 @@ function pageTitle(pathname: string) {
   if (pathname.includes("/settings/team")) return "Team";
   if (pathname.includes("/settings/knowledge")) return "Knowledge";
   if (pathname.includes("/settings/routing")) return "Routing";
+  if (pathname.includes("/settings/readiness")) return "Readiness";
   if (pathname.includes("/settings/workspace")) return "Workspace";
   if (pathname.includes("/settings")) return "Settings";
   if (pathname.includes("/organizations")) return "Organizations";
@@ -40,6 +41,7 @@ function pageDescription(pathname: string) {
   if (pathname.includes("/settings/team")) return "Manage teammates and workspace access.";
   if (pathname.includes("/settings/knowledge")) return "Manage the sources AI can reference for replies.";
   if (pathname.includes("/settings/routing")) return "Configure rule-based assignment, approval, and priority handling.";
+  if (pathname.includes("/settings/readiness")) return "Review pilot controls, lifecycle messaging, data-control direction, and release checks.";
   if (pathname.includes("/settings/workspace")) return "Tune workspace details, signatures, SLA targets, and business hours.";
   if (pathname.includes("/settings/audit")) return "Filter, inspect, and export administrative activity.";
   if (pathname.includes("/settings")) return "Connect Gmail and configure team operations.";

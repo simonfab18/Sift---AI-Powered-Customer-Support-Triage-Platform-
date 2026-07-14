@@ -40,7 +40,10 @@ Required for full local testing:
 - `TASK_PUBSUB_AI_TRIAGE_TOPIC`: Pub/Sub topic for AI triage tasks.
 - `TASK_PUBSUB_WATCH_RENEWAL_TOPIC`: Pub/Sub topic for Gmail watch-renewal tasks.
 - `GEMINI_API_KEY`, `GEMINI_MODEL`: AI triage settings.
-- `AI_TRIAGE_DAILY_GEMINI_LIMIT`: free-only app-side cap for Gemini triage calls per UTC day. Defaults to `20`; use `0` only to disable the app-side cap.
+- `AI_TRIAGE_DAILY_GEMINI_LIMIT`: free-only app-wide cap for Gemini triage calls per UTC day. Defaults to `20`; use `0` only to disable the app-wide cap.
+- `AI_TRIAGE_DAILY_GEMINI_ORG_LIMIT`: free-only per-workspace cap for Gemini triage calls per UTC day. Defaults to `20`; Settings -> Readiness shows this workspace usage and the paused-for-today state.
+- `DIRECT_SEND_ENABLED`: global kill switch for sending approved Gmail replies from the app. Defaults to `false`.
+- `DIRECT_SEND_TEST_MODE`: when true, direct send records a test sent-message event without calling Gmail. Defaults to `true`.
 - `ATTACHMENT_STORAGE_BACKEND`: `disabled` locally or `gcs` when private attachment storage is enabled.
 - `ATTACHMENT_STORAGE_BUCKET`: private Google Cloud Storage bucket used when `ATTACHMENT_STORAGE_BACKEND=gcs`.
 - `ATTACHMENT_SIGNED_URL_TTL_SECONDS`: short-lived attachment download URL lifetime, default `300`.
@@ -128,6 +131,9 @@ Required in staging and production:
 - `TASK_PUBSUB_WATCH_RENEWAL_TOPIC`.
 - `GEMINI_API_KEY`, `GEMINI_MODEL`.
 - `AI_TRIAGE_DAILY_GEMINI_LIMIT`.
+- `AI_TRIAGE_DAILY_GEMINI_ORG_LIMIT`.
+- `DIRECT_SEND_ENABLED`.
+- `DIRECT_SEND_TEST_MODE`.
 - `FRONTEND_ORIGIN`, `API_CORS_ORIGINS`.
 - `SYNC_FALLBACK_INTERVAL_MINUTES`, `WATCH_RENEWAL_SCHEDULE`.
 - `RELEASE_VERSION`, `OPERATIONS_ALERT_OWNER`.

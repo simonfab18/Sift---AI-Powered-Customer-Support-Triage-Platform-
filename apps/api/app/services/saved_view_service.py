@@ -11,7 +11,7 @@ from app.models.ticket_saved_view import TicketSavedView
 from app.schemas.saved_view import SavedViewCreate, SavedViewUpdate
 from app.services.rbac_service import require_membership
 
-ALLOWED_FILTER_KEYS = {"status", "priority", "assigned_to", "triage_status", "sla_status", "gmail_connection_id"}
+ALLOWED_FILTER_KEYS = {"status", "priority", "assigned_to", "triage_status", "sla_status", "gmail_connection_id", "gmail_inbox_type"}
 ALLOWED_STATUSES = {item.value for item in TicketStatus} | {"all"}
 ALLOWED_PRIORITIES = {item.value for item in TicketPriority}
 ALLOWED_SLA_STATUSES = {"on_track", "warning", "breached", "paused"}

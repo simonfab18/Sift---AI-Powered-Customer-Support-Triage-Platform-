@@ -76,6 +76,8 @@ class TicketRead(BaseModel):
     gmail_connection_id: str | None = None
     gmail_connection_email: str | None = None
     gmail_connection_display_name: str | None = None
+    gmail_connection_inbox_type: str | None = None
+    gmail_connection_shared_address: str | None = None
     gmail_message_id: str | None = None
     gmail_thread_id: str | None = None
     subject: str
@@ -108,6 +110,8 @@ class TicketListItem(BaseModel):
     gmail_connection_id: str | None = None
     gmail_connection_email: str | None = None
     gmail_connection_display_name: str | None = None
+    gmail_connection_inbox_type: str | None = None
+    gmail_connection_shared_address: str | None = None
     gmail_message_id: str | None = None
     gmail_thread_id: str | None = None
     subject: str

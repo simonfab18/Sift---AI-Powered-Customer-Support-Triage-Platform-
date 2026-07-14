@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from "@/lib/config";
-import type { GmailConnection, JobRun, MailImportRule, MeResponse, Organization, Member } from "@/lib/api-types";
+import type { GmailConnection, JobRun, MailImportRule, MeResponse, Organization, Member, OrganizationDeletionRequest, OrganizationExport } from "@/lib/api-types";
 
 function toApiErrorMessage(errorText: string, status: number) {
   try {
@@ -13,14 +13,23 @@ function toApiErrorMessage(errorText: string, status: number) {
 }
 
 async function apiFetch<T>(path: string, accessToken: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      ...(init.headers ?? {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof TypeError
+        ? "Could not reach the API. Check your connection, then refresh and try again."
+        : "Request failed before the API could respond.",
+    );
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -45,12 +54,22 @@ export function createOrganization(accessToken: string, name: string) {
   });
 }
 
+export function getOrganizationExport(accessToken: string, organizationId: string) {
+  return apiFetch<OrganizationExport>(`/v1/organizations/${organizationId}/export`, accessToken);
+}
+
+export function requestOrganizationDeletion(accessToken: string, organizationId: string, reason: string) {
+  return apiFetch<OrganizationDeletionRequest>(`/v1/organizations/${organizationId}/deletion-request`, accessToken, {
+    method: "POST",
+    body: JSON.stringify({ confirm: true, reason }),
+  });
+}
 export function getGmailConnections(accessToken: string, organizationId: string) {
   return apiFetch<GmailConnection[]>(`/v1/orgs/${organizationId}/gmail/connections`, accessToken);
 }
 
 
-export function updateGmailConnection(accessToken: string, organizationId: string, connectionId: string, payload: { display_name?: string | null }) {
+export function updateGmailConnection(accessToken: string, organizationId: string, connectionId: string, payload: { display_name?: string | null; inbox_type?: string; shared_address?: string | null; channel_notes?: string | null }) {
   return apiFetch<GmailConnection>(`/v1/orgs/${organizationId}/gmail/connections/${connectionId}`, accessToken, {
     method: "PATCH",
     body: JSON.stringify(payload),

@@ -12,10 +12,21 @@ const slaTone: Record<string, string> = {
   paused: "bg-slate-100 text-slate-600",
 };
 
+function sourceTypeLabel(value?: string | null) {
+  if (value === "google_group") return "Group";
+  if (value === "shared_mailbox") return "Shared";
+  return "Inbox";
+}
+
 function SourceInboxBadge({ ticket }: { ticket: TicketListItem }) {
   const label = ticket.gmail_connection_display_name || ticket.gmail_connection_email;
   if (!label) return <span className="text-xs text-slate-400">Manual</span>;
-  return <span className="rounded-md bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700">{label}</span>;
+  return (
+    <span className="inline-flex flex-col gap-1 rounded-md bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700">
+      <span>{label}</span>
+      <span className="font-normal text-sky-600">{sourceTypeLabel(ticket.gmail_connection_inbox_type)}{ticket.gmail_connection_shared_address ? ` / ${ticket.gmail_connection_shared_address}` : ""}</span>
+    </span>
+  );
 }
 function SlaBadge({ status }: { status: string }) {
   return <span className={`rounded-md px-2 py-1 text-xs font-medium capitalize ${slaTone[status] ?? "bg-slate-100 text-slate-600"}`}>{status.replaceAll("_", " ")}</span>;

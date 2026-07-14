@@ -10,13 +10,16 @@ from app.core.config import settings
 from app.integrations.gemini.client import GeminiQuotaExceededError, classify_ticket_with_gemini
 from app.integrations.gemini.prompts import build_triage_prompt
 from app.models.ai_triage_result import AITriageResult
+from app.models.gmail_connection import GmailConnection
 from app.models.job_run import JobRun
+from app.models.member import MemberRole
 from app.models.reply_approval import ReplyApproval
 from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketStatus, TicketTriageStatus
-from app.schemas.ai import TriageOutput
+from app.schemas.ai import AITriageInboxUsageRead, AITriageUsageRead, TriageOutput
 from app.services.knowledge_service import record_knowledge_usage, retrieve_knowledge_sources
 from app.services.operations_service import ensure_job_defaults, mark_job_failed, mark_job_running, mark_job_succeeded
 from app.services.pilot_control_service import ensure_organization_pilot_allowed
+from app.services.rbac_service import require_role
 from app.services.reply_suggestion_service import create_ai_reply_suggestion_from_triage
 from app.services.ticket_service import get_ticket_or_404, write_ticket_event
 from app.services.ticket_lifecycle_service import transition_ticket_status
@@ -85,28 +88,149 @@ def _seconds_until_next_utc_day(now: datetime) -> int:
     return max(1, int((next_midnight - now).total_seconds()))
 
 
-def enforce_free_tier_gemini_limit(db: Session, job: JobRun | None) -> None:
-    limit = settings.ai_triage_daily_gemini_limit
-    if limit <= 0 or job is None:
-        return
-
-    now = utc_now()
+def _triage_day_bounds(now: datetime) -> tuple[datetime, datetime]:
     day_start = datetime.combine(now.date(), datetime.min.time(), tzinfo=UTC)
-    started_today = db.scalar(
+    day_end = day_start + timedelta(days=1)
+    return day_start, day_end
+
+
+def _started_ai_triage_job_count(
+    db: Session,
+    day_start: datetime,
+    day_end: datetime,
+    *,
+    organization_id: str | None = None,
+    exclude_job_id: str | None = None,
+) -> int:
+    statement = (
         select(func.count())
         .select_from(JobRun)
         .where(
             JobRun.job_type == "ai_triage",
             JobRun.started_at >= day_start,
-            JobRun.id != job.id,
+            JobRun.started_at < day_end,
         )
-    ) or 0
-    if started_today >= limit:
+    )
+    if organization_id is not None:
+        statement = statement.where(JobRun.organization_id == organization_id)
+    if exclude_job_id is not None:
+        statement = statement.where(JobRun.id != exclude_job_id)
+    return db.scalar(statement) or 0
+
+
+def _manual_ai_triage_result_count(
+    db: Session,
+    day_start: datetime,
+    day_end: datetime,
+    *,
+    organization_id: str | None = None,
+) -> int:
+    statement = select(func.count()).select_from(AITriageResult).where(
+        AITriageResult.job_run_id.is_(None),
+        AITriageResult.created_at >= day_start,
+        AITriageResult.created_at < day_end,
+    )
+    if organization_id is not None:
+        statement = statement.where(AITriageResult.organization_id == organization_id)
+    return db.scalar(statement) or 0
+
+
+def _ai_triage_usage_count(
+    db: Session,
+    day_start: datetime,
+    day_end: datetime,
+    *,
+    organization_id: str | None = None,
+    exclude_job_id: str | None = None,
+) -> int:
+    return _started_ai_triage_job_count(
+        db,
+        day_start,
+        day_end,
+        organization_id=organization_id,
+        exclude_job_id=exclude_job_id,
+    ) + _manual_ai_triage_result_count(db, day_start, day_end, organization_id=organization_id)
+
+
+def enforce_free_tier_gemini_limit(db: Session, organization_id: str, job: JobRun | None) -> None:
+    limit = settings.ai_triage_daily_gemini_limit
+    now = utc_now()
+    day_start, day_end = _triage_day_bounds(now)
+    if limit > 0:
+        used_today = _ai_triage_usage_count(
+            db,
+            day_start,
+            day_end,
+            exclude_job_id=job.id if job is not None else None,
+        )
+        if used_today >= limit:
+            retry_after = _seconds_until_next_utc_day(now)
+            raise GeminiQuotaExceededError(
+                "AI triage is paused for today because the free Gemini daily limit was reached; retry after the next UTC day.",
+                retry_after_seconds=retry_after,
+            )
+
+    org_limit = settings.ai_triage_daily_gemini_org_limit
+    if org_limit <= 0:
+        return
+    org_used_today = _ai_triage_usage_count(
+        db,
+        day_start,
+        day_end,
+        organization_id=organization_id,
+        exclude_job_id=job.id if job is not None else None,
+    )
+    if org_used_today >= org_limit:
         retry_after = _seconds_until_next_utc_day(now)
         raise GeminiQuotaExceededError(
-            "Gemini free-tier daily triage limit reached; retry after the next UTC day.",
+            "AI triage is paused for today because this workspace reached its daily free Gemini limit; retry after the next UTC day.",
             retry_after_seconds=retry_after,
         )
+
+
+def get_ai_triage_usage(db: Session, organization_id: str, actor: AuthenticatedUser) -> AITriageUsageRead:
+    require_role(db, organization_id, actor, {MemberRole.OWNER, MemberRole.ADMIN})
+    now = utc_now()
+    day_start, day_end = _triage_day_bounds(now)
+    limit = settings.ai_triage_daily_gemini_org_limit
+    used = _ai_triage_usage_count(db, day_start, day_end, organization_id=organization_id)
+    per_inbox_rows = db.execute(
+        select(Ticket.gmail_connection_id, GmailConnection.gmail_email, func.count(JobRun.id))
+        .select_from(JobRun)
+        .join(Ticket, JobRun.related_resource_id == Ticket.id)
+        .outerjoin(GmailConnection, Ticket.gmail_connection_id == GmailConnection.id)
+        .where(
+            JobRun.organization_id == organization_id,
+            JobRun.job_type == "ai_triage",
+            JobRun.started_at >= day_start,
+            JobRun.started_at < day_end,
+        )
+        .group_by(Ticket.gmail_connection_id, GmailConnection.gmail_email)
+        .order_by(GmailConnection.gmail_email.asc())
+    ).all()
+    per_inbox = [
+        AITriageInboxUsageRead(gmail_connection_id=row[0], gmail_email=row[1], used=row[2])
+        for row in per_inbox_rows
+    ]
+    remaining = None if limit <= 0 else max(0, limit - used)
+    return AITriageUsageRead(
+        date=now.date().isoformat(),
+        daily_limit=limit,
+        used=used,
+        remaining=remaining,
+        paused_for_today=limit > 0 and used >= limit,
+        resets_at=day_end,
+        per_inbox=per_inbox,
+    )
+
+
+def _quota_http_exception(exc: GeminiQuotaExceededError) -> HTTPException:
+    headers = {"Retry-After": str(exc.retry_after_seconds)} if exc.retry_after_seconds else None
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail=str(exc),
+        headers=headers,
+    )
 
 
 async def _execute_ticket_triage(
@@ -133,7 +257,7 @@ async def _execute_ticket_triage(
     db.commit()
 
     try:
-        enforce_free_tier_gemini_limit(db, job)
+        enforce_free_tier_gemini_limit(db, ticket.organization_id, job)
 
         retrieved_knowledge = retrieve_knowledge_sources(
             db,
@@ -269,7 +393,10 @@ async def run_ticket_triage(
 ) -> AITriageResult:
     ensure_organization_pilot_allowed(organization_id)
     ticket = get_ticket_or_404(db, organization_id, ticket_id, actor)
-    return await _execute_ticket_triage(db, ticket, actor)
+    try:
+        return await _execute_ticket_triage(db, ticket, actor)
+    except GeminiQuotaExceededError as exc:
+        raise _quota_http_exception(exc) from exc
 
 
 async def run_ticket_triage_job(db: Session, job_id: str) -> AITriageResult:

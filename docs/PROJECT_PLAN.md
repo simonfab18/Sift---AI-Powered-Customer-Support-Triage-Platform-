@@ -206,11 +206,12 @@ Local implementation added:
 
 - Added display labels for connected Gmail inboxes.
 - Added per-inbox import-rule routing direction metadata.
+- Added Google Groups/shared mailbox source metadata for connected Gmail inboxes, including source type, required shared/group address guardrails, notes, audit coverage, and Gmail settings UI controls.
 - Added owner/admin APIs to update inbox labels and import-rule routing settings.
 - Extended ticket list responses and filters with source Gmail connection metadata.
 - Updated the Gmail settings UI for multiple inboxes, per-inbox sync/watch status, per-inbox import controls, and import-rule editing.
-- Updated the ticket queue UI to show and filter by source inbox, including saved-view preservation. Backend saved-view sanitization now preserves `gmail_connection_id` and `sla_status` filters.
-- Added M11 backend coverage for multiple inbox labels, import-rule routing updates, role restrictions, ticket source labels, inbox filtering, and saved-view inbox-filter preservation.
+- Updated the ticket queue UI to show and filter by source inbox and source type, including saved-view preservation. Backend saved-view sanitization now preserves `gmail_connection_id`, `gmail_inbox_type`, and `sla_status` filters.
+- Added M11 backend coverage for multiple inbox labels, import-rule routing updates, role restrictions, ticket source labels, shared-source guardrails, inbox filtering, and saved-view inbox-filter preservation.
 
 Staging rollout status:
 
@@ -218,7 +219,7 @@ Staging rollout status:
 - Deployed the M11 backend to Cloud Run staging.
 - Deployed the M11 frontend to a Vercel preview.
 - Staging verification confirms two active Gmail inboxes in one organization, active sync/watch status for both inboxes, future watch expirations, ticket source records for both inboxes, import rules for both inboxes, Cloud Run health/status, and the Vercel ticket route. Saved-view inbox-filter preservation is deployed and covered by backend tests; a signed-in browser smoke for creating a saved view from the UI remains optional.
-- Attachment metadata and secure private file storage are implemented locally. Direct send, additional support channels, and paid billing remain deferred until Gmail product workflows are stable.
+- Attachment metadata and secure private file storage are deployed. Direct send now has a guarded deployed foundation with global/workspace kill switches and test mode; live direct send, additional support channels, and paid billing remain deferred until Gmail product workflows are stable and explicitly approved.
 
 ## Current Production Milestone: M11 Product Expansion - Multiple Gmail Inboxes
 
@@ -258,17 +259,18 @@ Owners and admins should be able to run one workspace with multiple Gmail inboxe
 
 ### M11 Local Verification
 
-- M11 multiple-inbox backend tests and related Gmail/ticket tests pass locally, including saved-view inbox-filter preservation.
+- M11 multiple-inbox backend tests and related Gmail/ticket tests pass locally, including saved-view inbox-filter preservation and shared-source guardrails.
 - Frontend production build passes locally.
-- Alembic/staging Supabase now report `0018_widen_gmail_attachment_id` as the current migration head.
-- Staging database migration, Cloud Run backend deploy, and Vercel deploy are complete for M11 multiple inboxes. Staging now has two active Gmail inbox connections in one organization, active sync/watch for both inboxes, future watch expirations, tickets linked to both source inboxes, active import rules for both inboxes, and Cloud Run/Vercel route verification. Saved-view inbox-filter preservation is deployed and backend-tested; signed-in UI creation of such a saved view is the only remaining optional browser smoke.
+- Alembic/staging Supabase now report `0019_direct_send_controls` as the current migration head.
+- Staging database migration, Cloud Run backend deploy, and Vercel deploy are complete for M11 multiple inboxes. Staging now has two active Gmail inbox connections in one organization, active sync/watch for both inboxes, future watch expirations, tickets linked to both source inboxes, active import rules for both inboxes, and Cloud Run/Vercel route verification. Saved-view inbox-filter preservation is deployed and signed-in UI smoke passed. Gmail sync-status UI smoke passed with both inboxes showing health details. Shared-source guardrails are deployed on Cloud Run revision `sift-api-staging-local-cors-20260714`, and the stable Vercel alias points to deployment `dpl_8Z7kAcn1Fidwr9ktWdNMCsV4Rcbf`.
 
 ### M11 Current Limitations
 
 - Attachment metadata capture has been implemented and deployed through Cloud Run staging revision `sift-api-staging-00014-rgm` with the `0016_ticket_attachment_metadata` migration applied to staging.
 - Attachment file storage and signed URL access are implemented behind `ATTACHMENT_STORAGE_BACKEND=gcs`. The `0017_attachment_file_storage` migration is applied to staging, the private bucket exists, object read/write IAM is configured, and Cloud Run env vars are set. Backend signed download-link generation now supports Cloud Run IAM signing and is deployed on revision `sift-api-staging-00023-sbq`; frontend download handling is deployed on Vercel deployment `dpl_2pdPBd87Hd8bzu91YdNTkTkEKb9p`, and a real staging PDF attachment download smoke test returned `200` from Cloud Run and downloaded successfully.
-- A basic attachment malware gate now blocks EICAR test-signature content before upload and records infected attachments; this remains deployed in the current Cloud Run staging line and was included before revision `sift-api-staging-00025-4dp`. Full antivirus scanning beyond this pilot gate, direct send, additional support channels, and paid billing remain deferred.
+- A basic attachment malware gate now blocks EICAR test-signature content before upload and records infected attachments; this remains deployed in the current Cloud Run staging line and was included before revision `sift-api-staging-00025-4dp`. Full antivirus scanning beyond this pilot gate, live direct send, additional support channels, and paid billing remain deferred; guarded direct-send controls are deployed for P2 validation with global sending disabled. Direct-send test-mode staging smoke passed on 2026-07-14 and verified sent-message, ticket event, audit event, and resolved-ticket behavior without sending real Gmail.
 - Gemini quota/backoff handling is deployed, focused backend tests pass, and free-only mode now adds `AI_TRIAGE_DAILY_GEMINI_LIMIT` before provider calls. This reduces retry noise but does not increase Gemini quota.
+- Known follow-up: Gmail settings shared-source editing needs another UI pass. The backend guardrails reject missing/invalid shared-source addresses, but the saved source label and inline validation behavior did not pass signed-in smoke and should be revisited before calling the Google Group/shared mailbox admin workflow complete.
 
 ## Later Milestones
 
@@ -294,4 +296,5 @@ Owners and admins should be able to run one workspace with multiple Gmail inboxe
 - Confirm deployed Google OAuth redirect URLs.
 - Confirm deployed CORS origins.
 - Cloud Run task routes, Pub/Sub push subscriptions, Cloud Scheduler jobs, and Error Reporting were rechecked after the latest staging deploy; repeat this after each future staging deploy.
-- Run full end-to-end staging test.
+- Gmail sync status UI polish is implemented and deployed: the Gmail settings page now shows health guidance, last sync/watch timestamps, last notification, failure count, active import lock state, and recent import errors. Signed-in smoke passed with both connected inboxes showing health.
+- Phase 8 implementation is complete in the codebase with a connected dashboard onboarding checklist, Gmail troubleshooting guidance, public pilot documentation pages for support/status/privacy/terms/data processing, and a Settings -> Readiness page for feature flags, lifecycle communication templates, daily free-tier AI usage visibility, downloadable organization export, deletion request intake, and controlled migration checks. Legal review is documented but still pending external approval, and future operator-reviewed hard deletion is documented but intentionally deferred until product/legal approval.

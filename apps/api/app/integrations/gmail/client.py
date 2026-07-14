@@ -220,6 +220,33 @@ async def create_gmail_draft(access_token: str, raw_message: str, thread_id: str
     return response.json()
 
 
+
+async def send_gmail_message(access_token: str, raw_message: str, thread_id: str | None = None) -> dict[str, Any]:
+    message: dict[str, Any] = {"raw": raw_message}
+    if thread_id:
+        message["threadId"] = thread_id
+
+    try:
+        async with httpx.AsyncClient(timeout=20, trust_env=False) as client:
+            response = await client.post(
+                f"{GMAIL_API_BASE_URL}/users/me/messages/send",
+                json=message,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not reach Gmail send endpoint from the API server",
+        ) from exc
+
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_gmail_error_detail(response, "Gmail message send failed"),
+        )
+
+    return response.json()
+
 async def get_gmail_attachment(access_token: str, message_id: str, attachment_id: str) -> dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=30, trust_env=False) as client:

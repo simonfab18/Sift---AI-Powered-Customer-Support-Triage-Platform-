@@ -17,6 +17,9 @@ export type GmailConnection = {
   connected_by_user_id: string;
   gmail_email: string;
   display_name: string | null;
+  inbox_type: string;
+  shared_address: string | null;
+  channel_notes: string | null;
   google_account_id: string;
   scopes: string;
   status: string;
@@ -74,4 +77,29 @@ export type MailImportRule = {
   routing_direction: string;
   is_active: boolean;
   created_at: string;
+};
+
+export type OrganizationExport = {
+  organization: Record<string, unknown>;
+  generated_at: string;
+  generated_by_user_id: string;
+  counts: Record<string, number>;
+  workspace_settings: Record<string, unknown> | null;
+  members: Record<string, unknown>[];
+  gmail_connections: Record<string, unknown>[];
+  customers: Record<string, unknown>[];
+  tickets: Record<string, unknown>[];
+  attachments: Record<string, unknown>[];
+  reply_approvals: Record<string, unknown>[];
+  audit_logs: Record<string, unknown>[];
+};
+
+export type OrganizationDeletionRequest = {
+  organization_id: string;
+  status: string;
+  requested_by_user_id: string;
+  requested_at: string;
+  sync_paused: boolean;
+  auto_triage_paused: boolean;
+  draft_creation_paused: boolean;
 };

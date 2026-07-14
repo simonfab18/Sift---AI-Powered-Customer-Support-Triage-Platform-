@@ -136,6 +136,7 @@ The app includes these main screens:
 - Settings
 
 The public landing page remains at `/`, while authenticated product flows now use the `/dashboard` app surface. Legacy `/app/...` URLs redirect into the matching dashboard pages for compatibility.
+Phase 8 GA-preparation implementation is complete in the codebase. The dashboard now includes a connected onboarding checklist that reads real workspace state for workspace selection, workspace defaults, Gmail connection health, imports, draft review, and team invitation. The Gmail settings page includes recovery guidance for degraded or reconnect-needed inboxes. Public pilot documentation pages now exist for support, status, privacy, terms, and data processing; these are product-readiness pages and still require legal review before a public commercial launch. Settings now include a Readiness page for workspace feature flags, pilot support contact, lifecycle communication templates, daily free-tier AI usage, downloadable organization export, deletion request intake, and controlled migration checks.
 
 The UI uses a modern SaaS layout with:
 
@@ -163,6 +164,8 @@ Metrics are used by the overview and analytics UI.
 ## Workspace and Team
 
 - Workspace settings can be viewed and updated.
+- Owner/admin users can manage workspace-level release controls from Settings -> Readiness, including Gmail sync, automatic AI triage, Gmail draft creation, approval requirement, pilot support contact, and daily free-tier AI usage visibility.
+- Owner/admin users can download a JSON organization export from Settings -> Readiness. Owners can submit a deletion request, which records an audit event and pauses Gmail sync, AI triage, and draft creation without hard-deleting records.
 - Team members can be listed.
 - Owner/admin users can invite members.
 - Owner/admin users can update member roles.
@@ -204,7 +207,7 @@ Staging verification status:
 
 Current limitations:
 
-- Gemini runs in free-only mode. The backend has an app-side daily Gemini triage cap (`AI_TRIAGE_DAILY_GEMINI_LIMIT`, default `20`) so staging/pilot use stops before repeated free-tier overages; quota-limit jobs are marked `quota_exceeded`, get a provider-aware `next_retry_at`, remain visible/retryable, and are acknowledged by the Cloud Run task route to avoid Pub/Sub redelivery loops.
+- Gemini runs in free-only mode. The backend has an app-wide daily Gemini triage cap (`AI_TRIAGE_DAILY_GEMINI_LIMIT`, default `20`) plus a per-workspace daily cap (`AI_TRIAGE_DAILY_GEMINI_ORG_LIMIT`, default `20`) so staging/pilot use stops before repeated free-tier overages; quota-limit jobs are marked `quota_exceeded`, get a provider-aware `next_retry_at`, remain visible/retryable, and are acknowledged by the Cloud Run task route to avoid Pub/Sub redelivery loops. Owner/admin users can view today's AI usage and per-inbox counts from Settings -> Readiness, including a clear "AI paused for today" state when the cap is exhausted.
 - Google Cloud Error Reporting is enabled and verified for Cloud Run staging with `ERROR_TRACKING_PROVIDER=google-cloud`; unhandled API exceptions and failed request-based task exceptions are captured with redacted request/job context. Controlled event group `CJzzx9Gtis-cSg` verified delivery and reached count `2` after the 2026-07-13 recheck. No external DSN is required for the Google Cloud provider.
 - The frontend Gmail success banner and dashboard route consolidation have been redeployed to the Vercel production alias.
 
@@ -263,9 +266,10 @@ Current limitations:
 
 - Owner/admin users can edit labels for each connected Gmail inbox.
 - Owner/admin users can manage each inbox import rule with support label, unread-only behavior, active state, and routing direction.
-- The Gmail settings UI shows multiple connected inboxes with independent sync/watch health, manual import, manual history queueing, and recent import context.
+- Owner/admin users can mark a connected Gmail source as an individual inbox, Google Group, or shared mailbox, including a shared/group address and notes. Google Group/shared mailbox sources require a shared address, and switching back to an individual inbox clears the shared address. This keeps Google Groups/shared-mailbox patterns inside the verified Gmail sync path without adding a new channel provider yet.
+- The Gmail settings UI shows multiple connected inboxes with independent sync/watch health, plain-English health guidance, last successful sync, watch expiry, last notification, failure count, active import lock state, manual import, manual history queueing, and recent import context.
 - The ticket queue shows the source inbox for Gmail-created tickets.
-- The ticket queue can filter by source Gmail inbox, and saved views can preserve that inbox filter; backend sanitization preserves `gmail_connection_id` and `sla_status` filters.
+- The ticket queue can filter by source Gmail inbox and Gmail source type, and saved views can preserve those filters; backend sanitization preserves `gmail_connection_id`, `gmail_inbox_type`, and `sla_status` filters.
 - Backend audit logs record Gmail connection label updates and import-rule routing updates.
 - Gmail watch registration is active for both verified staging inboxes after granting Gmail publisher access to the notification Pub/Sub topic.
 - Gmail-imported tickets capture attachment metadata: filename, MIME type, size, Gmail attachment ID, inline flag, policy status, storage status, scan status, and stored timestamp when available.
@@ -281,7 +285,7 @@ Local verification status:
 Current limitations:
 
 - The `0015_multiple_gmail_inboxes` migration has been applied to staging Supabase.
-- M11 multiple-inbox backend and frontend are deployed to staging/production-facing services, and the stable Vercel app now uses the `/dashboard` app surface. Staging verification confirms two active Gmail inboxes in one organization, active sync/watch state for both, future watch expirations, tickets linked to both source inboxes, active import rules for both, and Cloud Run/Vercel route health. Signed-in UI creation of a saved view with an inbox filter remains an optional browser smoke; backend preservation is deployed and tested.
+- M11 multiple-inbox backend and frontend are deployed to staging/production-facing services, and the stable Vercel app now uses the `/dashboard` app surface. Staging verification confirms two active Gmail inboxes in one organization, active sync/watch state for both, future watch expirations, tickets linked to both source inboxes, active import rules for both, Cloud Run/Vercel route health, signed-in saved-view inbox-filter preservation, signed-in Gmail sync-status health cards for both inboxes, and deployed shared-source guardrails for Google Group/shared mailbox address handling.
 - The `0016_ticket_attachment_metadata` migration has been applied to staging Supabase, and the attachment metadata backend changes are deployed to Cloud Run staging revision sift-api-staging-00014-rgm.
 - The `0017_attachment_file_storage` migration is applied to staging, the private staging GCS bucket exists, object read/write IAM is configured, and Cloud Run attachment storage env vars are set. Attachment storage and signed download-link generation are deployed to Cloud Run staging revision `sift-api-staging-00023-sbq`; the runtime service account has `roles/iam.serviceAccountTokenCreator`, health checks pass, the frontend download action is deployed on Vercel deployment `dpl_2pdPBd87Hd8bzu91YdNTkTkEKb9p`, and a real staging PDF attachment download smoke test returned `200` from Cloud Run and downloaded successfully.
 - Full antivirus scanning beyond the current basic malware gate, direct send, additional channels, and paid Gemini billing/quota expansion remain intentionally deferred before a real production pilot; the current product direction is free-only Gemini use with an app-side daily cap. Staging Gemini, Google OAuth, Supabase backend secret, Supabase database/pooler password, and encryption-key rotations are complete. Existing Gmail token version `1` remains readable through `ENCRYPTION_KEYRING`, while new tokens use version `2`. Sync/import/watch and approval-to-draft staging soak passed on 2026-07-13. Backup/restore, Cloud Run rollback, Vercel rollback, staging Secret Manager migration, Scheduler/Pub/Sub recheck, and Error Reporting recheck passed on 2026-07-13 and are logged in `docs/STAGING_DRILL_LOG.md`.
@@ -310,3 +314,14 @@ Current local links:
 - Backend health: `http://localhost:8001/health`
 
 Current local mode uses manual server processes. Staging/production async work now targets Google Pub/Sub and request-based Cloud Run task handlers instead of Redis/Celery workers.
+
+- Legal-review readiness is tracked in `docs/LEGAL_REVIEW_CHECKLIST.md`; external legal approval is still required before public commercial launch. Future hard deletion is documented in `docs/HARD_DELETION_POLICY.md` and remains an operator-reviewed future implementation, not an automatic self-serve delete today.
+
+## P2 Direct Send Controls
+
+- Direct Gmail send controls are implemented and deployed in guarded test-mode posture for approved reply suggestions.
+- Direct send is disabled by default globally and per workspace. It requires `DIRECT_SEND_ENABLED=true`, workspace `direct_send_enabled=true`, and an explicit final confirmation from the ticket UI.
+- The send request must confirm the exact approved reply version, recipient email, subject, body, and `SEND` confirmation text before the backend records or sends anything.
+- `DIRECT_SEND_TEST_MODE=true` records a test sent-message event without calling Gmail. Cloud Run staging is deployed with `DIRECT_SEND_ENABLED=false` and `DIRECT_SEND_TEST_MODE=true`; real Gmail sends remain off until explicit product approval.
+- Sent replies create `gmail_sent_messages` records, write `ticket.reply_sent` timeline events, write `gmail.message.sent` audit logs, and resolve the ticket.
+- Staging test-mode smoke passed on 2026-07-14 with a resolved smoke ticket, `test-send-*` message record, ticket timeline event, audit metadata, and audit `resource_id` verification. The staging global direct-send switch was restored to `DIRECT_SEND_ENABLED=false` afterward.

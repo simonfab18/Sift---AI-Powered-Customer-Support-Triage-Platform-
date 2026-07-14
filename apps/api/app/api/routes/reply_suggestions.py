@@ -1,8 +1,8 @@
-﻿from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.rate_limits import limit_draft_creation
-from app.schemas.reply_approval import GmailDraftCreateRead, ReplyApprovalRead, ReplyApprovalUpdate
+from app.schemas.reply_approval import GmailDirectSendRead, GmailDirectSendRequest, GmailDraftCreateRead, ReplyApprovalRead, ReplyApprovalUpdate
 from app.schemas.reply_suggestion import ReplySuggestionCreate, ReplySuggestionRead, ReplySuggestionUpdate
 from app.services.reply_approval_service import (
     approve_reply_suggestion as approve_legacy_reply_suggestion,
@@ -14,6 +14,7 @@ from app.services.reply_suggestion_service import (
     create_gmail_draft_from_reply_suggestion,
     list_reply_suggestions,
     reject_reply_suggestion,
+    send_approved_reply_suggestion,
     update_reply_suggestion,
 )
 
@@ -100,6 +101,34 @@ def reject_suggestion(
 ):
     return reject_reply_suggestion(db, organization_id, suggestion_id, current_user)
 
+
+
+@router.post(
+    "/orgs/{organization_id}/reply-suggestions/{suggestion_id}/send-gmail-reply",
+    response_model=GmailDirectSendRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(limit_draft_creation)],
+)
+async def send_reply_suggestion(
+    organization_id: str,
+    suggestion_id: str,
+    payload: GmailDirectSendRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    suggestion, sent_message = await send_approved_reply_suggestion(
+        db,
+        organization_id,
+        suggestion_id,
+        current_user,
+        payload,
+    )
+    return GmailDirectSendRead(
+        approval=suggestion,
+        sent_message=sent_message,
+        gmail_message_id=sent_message.gmail_message_id,
+        test_mode=sent_message.test_mode,
+    )
 
 @router.post(
     "/orgs/{organization_id}/reply-suggestions/{suggestion_id}/create-gmail-draft",

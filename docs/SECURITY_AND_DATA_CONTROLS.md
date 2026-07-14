@@ -44,7 +44,7 @@ Disconnect does not delete imported email content. Organization deletion/export 
 
 ## Organization Export Direction
 
-Until a self-serve export endpoint exists, exports should be handled as an operator-run procedure:
+Self-serve organization export now exists for owner/admin users in Settings -> Readiness. Operator-run exports should still follow the same data-boundary rules:
 
 1. Verify requester identity and owner/admin role.
 2. Export organization-scoped records only: organization, members, customers, tickets, ticket events, audit logs, Gmail connection metadata, sync events, AI triage results, reply suggestions/approvals, and draft metadata.
@@ -54,7 +54,7 @@ Until a self-serve export endpoint exists, exports should be handled as an opera
 
 ## Organization Deletion Direction
 
-Deletion must be explicit, audited, and delayed enough to prevent accidental loss.
+Deletion must be explicit, audited, and delayed enough to prevent accidental loss. The current self-serve control records an owner deletion request and pauses workspace automation; it does not hard-delete records automatically. See `docs/HARD_DELETION_POLICY.md` for the future operator-reviewed hard-deletion policy.
 
 Recommended future behavior:
 
@@ -87,3 +87,7 @@ Before pilot launch:
 ## Frontend Secret Boundary
 
 Frontend bundles must never include service-role keys, Gmail client secrets, Gemini API keys, encrypted refresh tokens, raw refresh tokens, internal operations tokens, or database URLs.
+
+## Legal Review Boundary
+
+Privacy, terms, data-processing, support, status, export, and deletion policy text is product-readiness documentation only until reviewed and approved. Track that external approval in `docs/LEGAL_REVIEW_CHECKLIST.md`.

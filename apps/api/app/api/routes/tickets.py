@@ -37,6 +37,7 @@ def read_tickets(
     priority_filter: str | None = Query(default=None, alias="priority"),
     sla_status_filter: str | None = Query(default=None, alias="sla_status"),
     gmail_connection_id: str | None = Query(default=None),
+    gmail_inbox_type: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
@@ -50,6 +51,7 @@ def read_tickets(
         limit,
         offset,
         gmail_connection_id_filter=gmail_connection_id,
+        gmail_inbox_type_filter=gmail_inbox_type,
     )
 
 

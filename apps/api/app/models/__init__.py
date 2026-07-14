@@ -4,6 +4,7 @@ from app.models.customer import Customer
 from app.models.gmail_connection import GmailConnection
 from app.models.gmail_draft import GmailDraft
 from app.models.gmail_oauth_state import GmailOAuthState
+from app.models.gmail_sent_message import GmailSentMessage
 from app.models.gmail_sync_event import GmailSyncEvent
 from app.models.job_run import JobRun
 from app.models.knowledge import KnowledgeSource, KnowledgeUsageEvent
@@ -29,6 +30,7 @@ __all__ = [
     "GmailConnection",
     "GmailDraft",
     "GmailOAuthState",
+    "GmailSentMessage",
     "GmailSyncEvent",
     "JobRun",
     "KnowledgeSource",

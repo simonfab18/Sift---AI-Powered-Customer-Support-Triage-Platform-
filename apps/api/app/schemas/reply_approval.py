@@ -46,3 +46,33 @@ class GmailDraftCreateRead(BaseModel):
     approval: ReplyApprovalRead | ReplySuggestionRead
     draft: GmailDraftRead
     gmail_draft_id: str
+
+class GmailDirectSendRequest(BaseModel):
+    reply_version: int = Field(ge=1)
+    confirm_recipient_email: str = Field(min_length=3)
+    confirm_subject: str = Field(min_length=1)
+    confirm_body: str = Field(min_length=1)
+    confirmation_text: str = Field(pattern="^SEND$")
+
+
+class GmailSentMessageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    organization_id: str
+    ticket_id: str
+    reply_suggestion_id: str
+    gmail_message_id: str
+    gmail_thread_id: str | None = None
+    reply_version: int
+    sent_by_user_id: str
+    test_mode: bool
+    sent_at: datetime
+    created_at: datetime
+
+
+class GmailDirectSendRead(BaseModel):
+    approval: ReplySuggestionRead
+    sent_message: GmailSentMessageRead
+    gmail_message_id: str
+    test_mode: bool

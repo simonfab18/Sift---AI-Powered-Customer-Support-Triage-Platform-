@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class GmailOAuthStartRead(BaseModel):
@@ -23,6 +23,9 @@ class GmailConnectionRead(BaseModel):
     connected_by_user_id: str
     gmail_email: str
     display_name: str | None = None
+    inbox_type: str = "individual"
+    shared_address: str | None = None
+    channel_notes: str | None = None
     google_account_id: str
     scopes: str
     token_key_version: int
@@ -50,6 +53,16 @@ class GmailConnectionRead(BaseModel):
 
 class GmailConnectionUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=120)
+    inbox_type: Literal["individual", "google_group", "shared_mailbox"] | None = None
+    shared_address: EmailStr | None = None
+    channel_notes: str | None = Field(default=None, max_length=500)
+
+    @field_validator("display_name", "channel_notes", mode="before")
+    @classmethod
+    def blank_string_to_none(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class GmailSyncEventRead(BaseModel):

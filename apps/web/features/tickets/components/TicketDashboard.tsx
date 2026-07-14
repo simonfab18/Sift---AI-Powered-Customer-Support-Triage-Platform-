@@ -38,6 +38,7 @@ export function TicketDashboard() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [slaFilter, setSlaFilter] = useState("all");
   const [inboxFilter, setInboxFilter] = useState("all");
+  const [sourceTypeFilter, setSourceTypeFilter] = useState("all");
   const [sort, setSort] = useState("urgency");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState("resolve");
@@ -74,6 +75,7 @@ export function TicketDashboard() {
           priority: urgency,
           sla_status: slaFilter,
           gmail_connection_id: inboxFilter,
+          gmail_inbox_type: sourceTypeFilter,
         }),
         getMetricsOverview(context.organizationId, context.accessToken),
         getSavedViews(context.organizationId, context.accessToken).catch(() => []),
@@ -93,7 +95,7 @@ export function TicketDashboard() {
 
   useEffect(() => {
     void loadTickets();
-  }, [urgency, statusFilter, slaFilter, inboxFilter]);
+  }, [urgency, statusFilter, slaFilter, inboxFilter, sourceTypeFilter]);
 
   const visibleTickets = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -102,6 +104,7 @@ export function TicketDashboard() {
       .filter((ticket) => statusFilter === "all" || ticket.status === statusFilter)
       .filter((ticket) => slaFilter === "all" || ticket.sla_status === slaFilter)
       .filter((ticket) => inboxFilter === "all" || ticket.gmail_connection_id === inboxFilter)
+      .filter((ticket) => sourceTypeFilter === "all" || ticket.gmail_connection_inbox_type === sourceTypeFilter)
       .filter((ticket) => {
         if (!normalizedQuery) return true;
         return [ticket.subject, ticket.customer_email, ticket.customer_name ?? "", ticket.category, ticket.status]
@@ -113,7 +116,7 @@ export function TicketDashboard() {
         if (sort === "recent") return new Date(right.received_at).getTime() - new Date(left.received_at).getTime();
         return (urgencyOrder[left.priority] ?? 4) - (urgencyOrder[right.priority] ?? 4) || new Date(right.received_at).getTime() - new Date(left.received_at).getTime();
       });
-  }, [tickets, query, urgency, statusFilter, slaFilter, inboxFilter, sort]);
+  }, [tickets, query, urgency, statusFilter, slaFilter, inboxFilter, sourceTypeFilter, sort]);
 
   function toggleSelection(ticketId: string) {
     setSelectedIds((current) => {
@@ -129,6 +132,7 @@ export function TicketDashboard() {
     setStatusFilter(view.filters.status ?? "all");
     setSlaFilter(view.filters.sla_status ?? "all");
     setInboxFilter(view.filters.gmail_connection_id ?? "all");
+    setSourceTypeFilter(view.filters.gmail_inbox_type ?? "all");
     setQuery("");
     setMessage(`Applied ${view.name}.`);
   }
@@ -148,6 +152,7 @@ export function TicketDashboard() {
       if (statusFilter !== "all") filters.status = statusFilter;
       if (slaFilter !== "all") filters.sla_status = slaFilter;
       if (inboxFilter !== "all") filters.gmail_connection_id = inboxFilter;
+      if (sourceTypeFilter !== "all") filters.gmail_inbox_type = sourceTypeFilter;
       await createSavedView(context.organizationId, context.accessToken, viewName.trim(), filters);
       setViewName("");
       await loadTickets();
@@ -232,7 +237,7 @@ export function TicketDashboard() {
       ) : null}
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <div className="grid gap-3 xl:grid-cols-[1fr_auto_auto_auto_auto_auto]">
+        <div className="grid gap-3 xl:grid-cols-[1fr_auto_auto_auto_auto_auto_auto]">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -255,6 +260,12 @@ export function TicketDashboard() {
           <select value={inboxFilter} onChange={(event) => setInboxFilter(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
             <option value="all">All inboxes</option>
             {gmailConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.display_name || connection.gmail_email}</option>)}
+          </select>
+          <select value={sourceTypeFilter} onChange={(event) => setSourceTypeFilter(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+            <option value="all">All sources</option>
+            <option value="individual">Individual inboxes</option>
+            <option value="google_group">Google Groups</option>
+            <option value="shared_mailbox">Shared mailboxes</option>
           </select>
           <select value={sort} onChange={(event) => setSort(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
             <option value="urgency">Sort by urgency</option>

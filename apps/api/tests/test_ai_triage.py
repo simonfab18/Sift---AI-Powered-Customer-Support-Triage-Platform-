@@ -2,7 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.models.ticket import TicketCategory, TicketPriority, TicketSentiment
+from app.integrations.gemini.client import GeminiQuotaExceededError
+from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketSentiment, TicketTriageStatus
 from app.schemas.ai import TriageOutput
 
 
@@ -131,6 +132,30 @@ def test_triage_requires_organization_membership(
     assert response.status_code == 403
 
 
+def test_manual_triage_quota_failure_returns_retryable_api_error(
+    client: TestClient,
+    ticket: tuple[dict, dict],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    organization, created_ticket = ticket
+
+    async def fake_classify(prompt: str):
+        raise GeminiQuotaExceededError("Gemini quota exceeded", retry_after_seconds=61)
+
+    monkeypatch.setattr("app.services.ai_triage_service.classify_ticket_with_gemini", fake_classify)
+
+    response = client.post(f"/v1/orgs/{organization['id']}/tickets/{created_ticket['id']}/triage")
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Gemini quota exceeded"
+    assert response.headers["retry-after"] == "61"
+
+    with client.session_factory() as db:
+        stored_ticket = db.get(Ticket, created_ticket["id"])
+
+    assert stored_ticket.triage_status == TicketTriageStatus.FAILED.value
+    assert stored_ticket.triage_error_message == "Gemini quota exceeded"
+    assert stored_ticket.active_triage_job_id is None
 
 def test_triage_output_requires_confidence_and_reasoning() -> None:
     with pytest.raises(ValidationError):

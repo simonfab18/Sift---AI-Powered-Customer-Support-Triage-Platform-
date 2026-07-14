@@ -5,6 +5,8 @@ export type TicketListItem = {
   gmail_connection_id: string | null;
   gmail_connection_email: string | null;
   gmail_connection_display_name: string | null;
+  gmail_connection_inbox_type: string | null;
+  gmail_connection_shared_address: string | null;
   gmail_message_id: string | null;
   gmail_thread_id: string | null;
   subject: string;
@@ -107,6 +109,23 @@ export type AITriageResult = {
   created_at: string;
 };
 
+
+export type AITriageInboxUsage = {
+  gmail_connection_id: string | null;
+  gmail_email: string | null;
+  used: number;
+};
+
+export type AITriageUsage = {
+  date: string;
+  timezone: string;
+  daily_limit: number;
+  used: number;
+  remaining: number | null;
+  paused_for_today: boolean;
+  resets_at: string;
+  per_inbox: AITriageInboxUsage[];
+};
 export type ReplySuggestion = {
   id: string;
   organization_id: string;
@@ -144,6 +163,27 @@ export type GmailDraftCreateResponse = {
   gmail_draft_id: string;
 };
 
+
+export type GmailSentMessage = {
+  id: string;
+  organization_id: string;
+  ticket_id: string;
+  reply_suggestion_id: string;
+  gmail_message_id: string;
+  gmail_thread_id: string | null;
+  reply_version: number;
+  sent_by_user_id: string;
+  test_mode: boolean;
+  sent_at: string;
+  created_at: string;
+};
+
+export type GmailDirectSendResponse = {
+  approval: ReplySuggestion;
+  sent_message: GmailSentMessage;
+  gmail_message_id: string;
+  test_mode: boolean;
+};
 export type MetricsOverview = {
   total_tickets: number;
   active_tickets: number;
@@ -296,6 +336,7 @@ export type WorkspaceSettings = {
   draft_requires_approval: boolean;
   sync_enabled: boolean;
   draft_creation_enabled: boolean;
+  direct_send_enabled: boolean;
   pilot_feedback_contact: string | null;
   business_timezone: string;
   business_hours: Record<string, { start?: string; end?: string }>;

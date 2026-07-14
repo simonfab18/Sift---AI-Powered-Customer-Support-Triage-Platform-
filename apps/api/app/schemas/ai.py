@@ -55,3 +55,19 @@ class AITriageJobRead(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     created_at: datetime
+
+class AITriageInboxUsageRead(BaseModel):
+    gmail_connection_id: str | None = None
+    gmail_email: str | None = None
+    used: int
+
+
+class AITriageUsageRead(BaseModel):
+    date: str
+    timezone: str = "UTC"
+    daily_limit: int
+    used: int
+    remaining: int | None = None
+    paused_for_today: bool
+    resets_at: datetime
+    per_inbox: list[AITriageInboxUsageRead]

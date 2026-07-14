@@ -1,9 +1,9 @@
-﻿from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.rate_limits import limit_retry, limit_triage
-from app.schemas.ai import AITriageJobRead, AITriageResultRead
-from app.services.ai_triage_service import list_ticket_triage_results, run_ticket_triage
+from app.schemas.ai import AITriageJobRead, AITriageResultRead, AITriageUsageRead
+from app.services.ai_triage_service import get_ai_triage_usage, list_ticket_triage_results, run_ticket_triage
 from app.services.job_queue_service import enqueue_ticket_triage
 
 router = APIRouter(tags=["ai-triage"])
@@ -38,6 +38,15 @@ def retry_ticket_triage(
 ):
     return enqueue_ticket_triage(db, organization_id, ticket_id, current_user, force=True, respect_workspace_setting=False)
 
+
+
+@router.get("/orgs/{organization_id}/ai/usage", response_model=AITriageUsageRead)
+def read_ai_triage_usage(
+    organization_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    return get_ai_triage_usage(db, organization_id, current_user)
 
 @router.get("/orgs/{organization_id}/tickets/{ticket_id}/triage", response_model=list[AITriageResultRead])
 def read_ticket_triage_results(
