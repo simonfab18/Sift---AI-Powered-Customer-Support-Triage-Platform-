@@ -47,6 +47,45 @@ const migrationChecklist = [
   "Keep rollback commands and the previous frontend/backend deployments available until smoke checks pass.",
 ];
 
+const smokeTestChecklist = [
+  {
+    label: "Gmail inbox health",
+    detail: "Confirm every pilot inbox is healthy, then run Import now only when no import is already active.",
+    href: "/dashboard/settings/gmail",
+    action: "Open Gmail settings",
+  },
+  {
+    label: "Ticket queue review",
+    detail: "Send or import one test email, confirm the ticket appears, and verify source inbox filters still work.",
+    href: "/dashboard/tickets",
+    action: "Open tickets",
+  },
+  {
+    label: "Approval to draft",
+    detail: "Review a suggested reply, approve it, create the Gmail draft, and confirm the draft-created state is visible.",
+    href: "/dashboard/tickets",
+    action: "Review tickets",
+  },
+  {
+    label: "Attachment download",
+    detail: "For a message with an allowed attachment, store it and confirm the signed download opens the file.",
+    href: "/dashboard/tickets",
+    action: "Check attachment",
+  },
+  {
+    label: "Operations posture",
+    detail: "Check the dashboard operations panel for degraded inboxes, failed jobs, and retryable work before inviting pilot users.",
+    href: "/dashboard",
+    action: "Open dashboard",
+  },
+  {
+    label: "Rollback notes",
+    detail: "Record the current Cloud Run revision, Vercel deployment, and migration head before changing production-facing resources.",
+    href: "/dashboard/settings/readiness",
+    action: "Stay here",
+  },
+];
+
 type PilotReadinessItem = {
   label: string;
   status: "ready" | "attention" | "review";
@@ -359,8 +398,29 @@ export function ReleaseReadinessSettings() {
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="font-display text-lg font-semibold">Pilot smoke test</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Run these checks after deploys or configuration changes before using a real support inbox.</p>
+          </div>
+          <span className="w-fit rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Manual check</span>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {smokeTestChecklist.map((item) => (
+            <article key={item.label} className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-medium text-slate-900">{item.label}</h3>
+                <Link href={item.href} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-teal-700 ring-1 ring-inset ring-slate-200">{item.action}</Link>
+              </div>
+              <p className="mt-2 leading-6 text-slate-600">{item.detail}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5">
         <h2 className="font-display text-lg font-semibold">Lifecycle communications</h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Reusable pilot messages for onboarding, degraded sync, quota limits, and approval reminders.</p>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Reusable pilot messages for onboarding, degraded sync, quota limits, and approval reminders.</p>
         {aiUsage ? (
           <div className={aiUsage.paused_for_today ? "mt-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" : "mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"}>
             <p className="font-medium">{aiUsage.paused_for_today ? "AI paused for today" : "AI usage available today"}</p>
