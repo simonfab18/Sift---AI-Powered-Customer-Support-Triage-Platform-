@@ -32,6 +32,33 @@ function SlaBadge({ status }: { status: string }) {
   return <span className={`rounded-md px-2 py-1 text-xs font-medium capitalize ${slaTone[status] ?? "bg-slate-100 text-slate-600"}`}>{status.replaceAll("_", " ")}</span>;
 }
 
+function triageState(ticket: TicketListItem) {
+  const status = ticket.triage_status;
+  const error = ticket.triage_error_message?.toLowerCase() ?? "";
+  if (status === "triaged") return { label: "Triaged", className: "border-teal-200 bg-teal-50 text-teal-700", detail: null as string | null };
+  if (status === "queued") return { label: "Queued", className: "border-sky-200 bg-sky-50 text-sky-700", detail: null as string | null };
+  if (status === "triaging") return { label: "Running", className: "border-sky-200 bg-sky-50 text-sky-700", detail: null as string | null };
+  if (status === "triage_failed") {
+    const quota = error.includes("quota") || error.includes("free gemini") || error.includes("too_many_requests");
+    return {
+      label: quota ? "AI paused" : "Retry needed",
+      className: quota ? "border-amber-200 bg-amber-50 text-amber-800" : "border-rose-200 bg-rose-50 text-rose-700",
+      detail: ticket.triage_error_message,
+    };
+  }
+  return { label: status?.replaceAll("_", " ") || "Not queued", className: "border-slate-200 bg-slate-50 text-slate-600", detail: null as string | null };
+}
+
+function TriageStateBadge({ ticket }: { ticket: TicketListItem }) {
+  const state = triageState(ticket);
+  return (
+    <span className={`inline-flex max-w-44 flex-col rounded-md border px-2 py-1 text-xs font-medium capitalize ${state.className}`} title={state.detail ?? undefined}>
+      <span>{state.label}</span>
+      {state.detail ? <span className="mt-1 truncate font-normal normal-case opacity-80">{state.detail}</span> : null}
+    </span>
+  );
+}
+
 type TicketListProps = {
   tickets: TicketListItem[];
   selectedIds?: Set<string>;
@@ -90,7 +117,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
                 <td className="px-4 py-3"><TicketPriorityBadge priority={ticket.priority} /></td>
                 <td className="px-4 py-3 text-slate-600">{ticket.category.replaceAll("_", " ")}</td>
                 <td className="px-4 py-3"><TicketStatusBadge status={ticket.status} /></td>
-                <td className="px-4 py-3 font-mono text-xs text-slate-500">{ticket.triage_status?.replaceAll("_", " ") ?? "N/A"}</td>
+                <td className="px-4 py-3"><TriageStateBadge ticket={ticket} /></td>
                 <td className="px-4 py-3"><SlaBadge status={ticket.sla_status ?? "on_track"} /></td>
                 <td className="px-4 py-3 font-mono text-xs text-slate-500">{new Date(ticket.received_at).toLocaleString()}</td>
               </tr>
@@ -123,6 +150,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
                 <TicketPriorityBadge priority={ticket.priority} />
                 <TicketStatusBadge status={ticket.status} />
                 <SlaBadge status={ticket.sla_status ?? "on_track"} />
+                <TriageStateBadge ticket={ticket} />
               </div>
               {ticket.first_review_due_at ? <p className="mt-2 text-xs text-slate-500">Review due {new Date(ticket.first_review_due_at).toLocaleString()}</p> : null}
             </div>

@@ -28,6 +28,7 @@ import {
   rejectReplySuggestion,
   releaseCollaborationLock,
   runTicketTriage,
+  TicketApiError,
   sendGmailReplyFromSuggestion,
   storeTicketAttachment,
   updateInternalNote,
@@ -75,6 +76,45 @@ function replySubject(subject: string) {
 
 function displayAttachmentStatus(status: string) {
   return status.replaceAll("_", " ");
+}
+
+function formatRetryAfter(seconds: number | null) {
+  if (!seconds || seconds <= 0) return null;
+  if (seconds < 60) return `${seconds} seconds`;
+  const minutes = Math.ceil(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+function triageStatusTone(status?: string | null) {
+  if (status === "triaged") return "border-teal-200 bg-teal-50 text-teal-700";
+  if (status === "queued" || status === "triaging") return "border-sky-200 bg-sky-50 text-sky-700";
+  if (status === "triage_failed") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (status === "not_queued") return "border-slate-200 bg-slate-50 text-slate-600";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function triageStatusLabel(status?: string | null) {
+  if (!status) return "Not queued";
+  if (status === "triage_failed") return "Needs retry";
+  return status.replaceAll("_", " ");
+}
+
+function triageFailureMessage(ticket: Ticket) {
+  if (ticket.triage_status !== "triage_failed") return null;
+  const error = ticket.triage_error_message ?? "AI triage did not complete.";
+  const lower = error.toLowerCase();
+  if (lower.includes("quota") || lower.includes("free gemini") || lower.includes("too_many_requests")) {
+    return {
+      title: "AI paused by Gemini free quota",
+      body: "This ticket was imported correctly, but AI classification paused before Gemini returned a result. You can edit the reply manually or retry after the quota window resets.",
+      reason: error,
+    };
+  }
+  return {
+    title: "AI triage needs a retry",
+    body: "This ticket is still safe to handle manually. Regenerate can retry the classification and draft suggestion.",
+    reason: error,
+  };
 }
 
 export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }: { ticketId: string; basePath?: string }) {
@@ -182,8 +222,15 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     try {
       await runTicketTriage(context.organizationId, ticketId, context.accessToken);
       await loadTicket();
+      setMessage("AI triage completed.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to run AI triage.");
+      if (error instanceof TicketApiError && error.status === 429) {
+        const wait = formatRetryAfter(error.retryAfterSeconds);
+        setMessage(wait ? `${error.message} Try again in about ${wait}.` : error.message);
+      } else {
+        setMessage(error instanceof Error ? error.message : "Failed to run AI triage.");
+      }
+      await loadTicket();
     } finally {
       setTriaging(false);
     }
@@ -543,7 +590,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <div><dt className="text-slate-500">Urgency</dt><dd className="mt-1">{triageFailedWithoutResult ? <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Not classified</span> : <UrgencyBadge priority={ticket.priority} />}</dd></div>
                 <div><dt className="text-slate-500">Category</dt><dd className="mt-1 font-medium capitalize">{displayedCategory}</dd></div>
-                <div><dt className="text-slate-500">Triage</dt><dd className="mt-1 font-medium capitalize">{ticket.triage_status.replaceAll("_", " ")}</dd></div>
+                <div><dt className="text-slate-500">Triage</dt><dd className="mt-1"><span className={`inline-flex rounded-md border px-2 py-1 text-xs font-medium capitalize ${triageStatusTone(ticket.triage_status)}`}>{triageStatusLabel(ticket.triage_status)}</span></dd></div>
                 <div><dt className="text-slate-500">Review</dt><dd className="mt-1 font-medium">{displayedReview}</dd></div>
                 <div><dt className="text-slate-500">First review due</dt><dd className="mt-1 font-medium">{ticket.first_review_due_at ? new Date(ticket.first_review_due_at).toLocaleString() : "Not set"}</dd></div>
                 <div><dt className="text-slate-500">Resolution due</dt><dd className="mt-1 font-medium">{ticket.resolution_due_at ? new Date(ticket.resolution_due_at).toLocaleString() : "Not set"}</dd></div>

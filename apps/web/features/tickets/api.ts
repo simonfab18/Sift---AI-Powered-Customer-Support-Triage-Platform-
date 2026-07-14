@@ -30,6 +30,27 @@ function getApiBaseUrl() {
   return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 }
 
+export class TicketApiError extends Error {
+  status: number;
+  retryAfterSeconds: number | null;
+
+  constructor(message: string, status: number, retryAfterSeconds: number | null = null) {
+    super(message);
+    this.name = "TicketApiError";
+    this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+function parseRetryAfter(value: string | null) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, Math.ceil(seconds));
+  const retryDate = new Date(value).getTime();
+  if (Number.isNaN(retryDate)) return null;
+  return Math.max(0, Math.ceil((retryDate - Date.now()) / 1000));
+}
+
 function toTicketApiError(errorText: string, status: number) {
   try {
     const parsed = JSON.parse(errorText) as { detail?: unknown };
