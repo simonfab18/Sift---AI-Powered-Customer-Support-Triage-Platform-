@@ -30,6 +30,18 @@ function operationLabel(jobType: string) {
   return jobType.replace(/_/g, " ");
 }
 
+function hasAiClassification(ticket: TicketListItem) {
+  return ticket.triage_status === "triaged";
+}
+
+function NotClassifiedBadge() {
+  return <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">Not classified</span>;
+}
+
+function formatConfidence(value?: number | null) {
+  return typeof value === "number" ? `${Math.round(value)}%` : "No AI data";
+}
+
 function operationTone(job: OperationsJob) {
   if (job.retryable) return "border-amber-200 bg-amber-50 text-amber-900";
   if (job.error_code === "quota_exceeded") return "border-sky-200 bg-sky-50 text-sky-800";
@@ -159,7 +171,7 @@ export function DashboardHome() {
               <StatCard label="Open tickets" value={metrics.active_tickets} />
               <StatCard label="Pending approval" value={suggestions.length} />
               <StatCard label="Auto-triaged today" value={metrics.total_tickets} detail="Imported ticket total" />
-              <StatCard label="Avg AI confidence" value="N/A" detail="Backend field needed" />
+              <StatCard label="Avg AI confidence" value={formatConfidence(metrics.average_confidence_score)} detail={metrics.average_confidence_score === null ? "No completed AI triage yet" : "Completed AI triage"} />
             </div>
           ) : null}
         </div>
@@ -274,7 +286,7 @@ export function DashboardHome() {
                     <p className="mt-1 text-slate-500">{ticket.customer_name ?? ticket.customer_email}</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <UrgencyBadge priority={ticket.priority} />
+                    {hasAiClassification(ticket) ? <UrgencyBadge priority={ticket.priority} /> : <NotClassifiedBadge />}
                     <StatusBadge status={ticket.status} />
                   </div>
                 </Link>
@@ -286,3 +298,4 @@ export function DashboardHome() {
     </div>
   );
 }
+

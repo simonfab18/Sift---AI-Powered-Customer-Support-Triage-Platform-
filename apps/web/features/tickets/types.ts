@@ -192,6 +192,7 @@ export type MetricsOverview = {
   critical_tickets: number;
   high_priority_tickets: number;
   draft_created_tickets: number;
+  average_confidence_score: number | null;
   by_status: Record<string, number>;
   by_priority: Record<string, number>;
 };
@@ -410,3 +411,4 @@ export type AuditLog = {
   metadata: Record<string, unknown>;
   created_at: string;
 };
+

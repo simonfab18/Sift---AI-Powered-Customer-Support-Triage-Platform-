@@ -500,6 +500,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const triageFailedWithoutResult = ticket?.triage_status === "triage_failed" && !latestTriage;
   const displayedCategory = triageFailedWithoutResult ? "Not classified" : ticket?.category.replaceAll("_", " ");
   const displayedReview = triageFailedWithoutResult ? "Not available" : latestTriage?.requires_human_review ? "Required" : "Not flagged";
+  const displayedUrgencyBadge = triageFailedWithoutResult ? <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Not classified</span> : ticket ? <UrgencyBadge priority={ticket.priority} /> : null;
   const canEdit = latestSuggestion?.status === "suggested" || latestSuggestion?.status === "edited";
   const draftCreated = latestSuggestion?.status === "draft_created" || Boolean(latestSuggestion?.gmail_draft_id);
   const canDraft = latestSuggestion?.status === "approved" && !latestSuggestion.gmail_draft_id;
@@ -526,7 +527,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                   <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-slate-900">{ticket.subject}</h2>
                   <p className="mt-2 text-sm text-slate-500">From {ticket.customer.name ?? ticket.customer.email} - {new Date(ticket.received_at).toLocaleString()}</p>
                 </div>
-                <div className="flex flex-wrap gap-2"><UrgencyBadge priority={ticket.priority} /><StatusBadge status={ticket.status} /><span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium capitalize text-slate-600">SLA {ticket.sla_status.replaceAll("_", " ")}</span></div>
+                <div className="flex flex-wrap gap-2">{displayedUrgencyBadge}<StatusBadge status={ticket.status} /><span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium capitalize text-slate-600">SLA {ticket.sla_status.replaceAll("_", " ")}</span></div>
               </div>
             </div>
             <div className="max-h-[calc(100vh-280px)] overflow-y-auto p-5">
@@ -592,7 +593,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                 <Button type="button" variant="outline" onClick={() => void handleRunTriage()} disabled={triaging}>{triaging ? "Running..." : "Regenerate"}</Button>
               </div>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div><dt className="text-slate-500">Urgency</dt><dd className="mt-1">{triageFailedWithoutResult ? <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Not classified</span> : <UrgencyBadge priority={ticket.priority} />}</dd></div>
+                <div><dt className="text-slate-500">Urgency</dt><dd className="mt-1">{displayedUrgencyBadge}</dd></div>
                 <div><dt className="text-slate-500">Category</dt><dd className="mt-1 font-medium capitalize">{displayedCategory}</dd></div>
                 <div><dt className="text-slate-500">Triage</dt><dd className="mt-1"><span className={`inline-flex rounded-md border px-2 py-1 text-xs font-medium capitalize ${triageStatusTone(ticket.triage_status)}`}>{triageStatusLabel(ticket.triage_status)}</span></dd></div>
                 <div><dt className="text-slate-500">Review</dt><dd className="mt-1 font-medium">{displayedReview}</dd></div>
@@ -776,3 +777,4 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     </section>
   );
 }
+

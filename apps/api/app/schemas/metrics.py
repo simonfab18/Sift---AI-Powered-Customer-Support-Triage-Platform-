@@ -9,6 +9,7 @@ class MetricsOverviewRead(BaseModel):
     critical_tickets: int
     high_priority_tickets: int
     draft_created_tickets: int
+    average_confidence_score: float | None = None
     by_status: dict[str, int]
     by_priority: dict[str, int]
 
@@ -62,3 +63,4 @@ class AdminAnalyticsRead(BaseModel):
     ai_quality: AIQualityAnalyticsRead
     gmail_sync: GmailSyncAnalyticsRead
     notes: list[str] = Field(default_factory=list)
+

@@ -85,6 +85,13 @@ def get_metrics_overview(db: Session, organization_id: str, actor: Authenticated
 
     by_status = _count_rows(status_rows)
     by_priority = _count_rows(priority_rows)
+    confidence_scores = list(
+        db.scalars(
+            select(AITriageResult.confidence_score).where(
+                AITriageResult.organization_id == organization_id
+            )
+        )
+    )
 
     return MetricsOverviewRead(
         total_tickets=sum(by_status.values()),
@@ -94,6 +101,7 @@ def get_metrics_overview(db: Session, organization_id: str, actor: Authenticated
         critical_tickets=by_priority.get("critical", 0),
         high_priority_tickets=by_priority.get("high", 0),
         draft_created_tickets=by_status.get(TicketStatus.DRAFT_CREATED.value, 0),
+        average_confidence_score=round(mean(confidence_scores), 2) if confidence_scores else None,
         by_status=by_status,
         by_priority=by_priority,
     )
@@ -337,3 +345,4 @@ def _gmail_sync(db: Session, organization_id: str) -> GmailSyncAnalyticsRead:
         reauthorization_count=int(reauth_connections),
         by_status=by_status,
     )
+
