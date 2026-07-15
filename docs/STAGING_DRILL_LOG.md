@@ -516,3 +516,17 @@ Smoke result:
 Notes:
 - The direct provider smoke is unblocked now.
 - Workspace/app daily triage caps still apply in the deployed product, so a workspace that already used most of today's free app-side allowance may have to wait for the UTC reset or have the cap adjusted deliberately.
+
+## 2026-07-15 - Pilot hardening AI classification checkpoint
+
+Status: Complete.
+
+Verification:
+- Re-ran `apps/api/scripts/gemini_triage_smoke.py` against Secret Manager latest for `sift-staging-gemini-api-key` with `GEMINI_MODEL=gemini-3.1-flash-lite`.
+- Cloud Run revision `sift-api-staging-00064-lxc` was serving 100% traffic before the smoke.
+- Result: 4/4 passed.
+- Verified classifications: refund/high, damaged_item/high, account_access/high, product_question/low.
+
+Outcome:
+- The pilot-hardening AI classification smoke checkpoint is complete for direct Gemini provider behavior.
+- Next pilot-hardening item: operator smoke for the dashboard operations panel and retry/degraded-state visibility.
