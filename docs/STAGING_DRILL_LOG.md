@@ -481,3 +481,20 @@ Status: Backend/frontend deployed; route smoke passed. AI provider smoke blocked
 - Confirmed signed-in Gmail settings smoke in the stable Vercel app: Google Group/shared mailbox source editing behaves correctly with saved-source display separated from unsaved edits.
 - Rechecked Cloud Run staging after env repair: revision `sift-api-staging-00062-cll` serves 100% traffic, `/health/ready` returns 200, and the live OpenAPI schema exposes `attachment_ai_processing_enabled` and `direct_send_enabled` for workspace settings read/update.
 - M11 Gmail-first expansion is ready to move into pilot hardening. Real Gemini multi-email classification smoke remains pending until provider credits/quota are available.
+
+## 2026-07-15 - Gemini pilot classification smoke runner
+
+Status: Smoke runner implemented; real provider classification smoke remains blocked by Gemini credits/prepayment.
+
+Checks performed:
+- Added `apps/api/scripts/gemini_triage_smoke.py`, which uses the same Gemini prompt/schema path as production ticket triage with four synthetic pilot emails: urgent refund/billing, damaged item, account access, and product question.
+- Ran the smoke runner with the staging Secret Manager key `sift-staging-gemini-api-key` without printing the secret.
+- The runner stopped after the first case to conserve quota.
+
+Result:
+- Gemini returned `too_many_requests` with message: `Your prepayment credits are depleted`.
+- No real AI classifications were produced, so the multi-email Gemini classification smoke remains pending.
+- The app behavior observed in staging is expected: imported tickets remain visible, AI state shows retry/quota pause, and fallback `medium` / `other` values are hidden from the queue/detail UI unless AI triage actually succeeds.
+
+Next action:
+- Restore Gemini prepayment credits or provider availability in AI Studio, then rerun `apps/api/scripts/gemini_triage_smoke.py` before connecting a real pilot inbox.
