@@ -280,7 +280,7 @@ Current limitations:
 - Gemini quota/backoff handling is deployed, and free-only mode now includes an app-side daily cap (`AI_TRIAGE_DAILY_GEMINI_LIMIT`, default `20`) so the system defers extra triage work instead of repeatedly calling Gemini after the free allowance is reached. A repeatable direct Gemini smoke runner exists at `apps/api/scripts/gemini_triage_smoke.py`; after updating staging to Secret Manager Gemini key version `4` and `GEMINI_MODEL=gemini-3.1-flash-lite`, the 2026-07-15 pilot-hardening classification checkpoint passed 4/4 synthetic pilot classifications.
 - Current product focus is now pilot hardening for the verified Gmail-first workflow. Outlook, chat channels, paid billing, and live direct send remain deferred unless explicitly approved.
 - The dashboard now includes a pilot operations panel for owner/admin users that surfaces Gmail sync-health posture, degraded inboxes, recent failed import/AI jobs, retryability, next retry timing, and safe retry actions using the existing operations endpoints. The 2026-07-15 pilot-hardening operations smoke passed focused backend operations/security tests plus Cloud Run and Vercel route checks; an optional signed-in visual check remains useful when degraded or failed-job data exists.
-- Settings -> Readiness now includes a pilot launch checklist that summarizes workspace safety posture for Gmail sync, AI triage, approval/draft controls, direct-send posture, pilot contact, attachment AI, and data controls. Pilot support contact is validated as an email in both the frontend and backend before the checklist marks it ready. The same page now includes a manual pilot smoke-test checklist for Gmail health, ticket import, approval-to-draft, attachment download, operations posture, and rollback notes.
+- Settings -> Readiness now includes a pilot launch checklist that summarizes workspace safety posture for Gmail sync, AI triage, approval/draft controls, direct-send posture, pilot contact, attachment AI, and data controls. Pilot support contact is validated as an email in both the frontend and backend before the checklist marks it ready. The same page now includes a manual pilot smoke-test checklist for Gmail health, ticket import, approval-to-draft, attachment download, operations posture, and rollback notes. The 2026-07-15 pilot readiness final checklist review is complete for technical staging readiness; external legal review and final pilot owner/admin signed-in visual confirmation remain manual sign-offs.
 
 Local verification status:
 
@@ -329,6 +329,7 @@ Current local mode uses manual server processes. Staging/production async work n
 - `DIRECT_SEND_TEST_MODE=true` records a test sent-message event without calling Gmail. Cloud Run staging is deployed with `DIRECT_SEND_ENABLED=false` and `DIRECT_SEND_TEST_MODE=true`; real Gmail sends remain off until explicit product approval.
 - Sent replies create `gmail_sent_messages` records, write `ticket.reply_sent` timeline events, write `gmail.message.sent` audit logs, and resolve the ticket.
 - Staging test-mode smoke passed on 2026-07-14 with a resolved smoke ticket, `test-send-*` message record, ticket timeline event, audit metadata, and audit `resource_id` verification. The staging global direct-send switch was restored to `DIRECT_SEND_ENABLED=false` afterward.
+
 
 
 

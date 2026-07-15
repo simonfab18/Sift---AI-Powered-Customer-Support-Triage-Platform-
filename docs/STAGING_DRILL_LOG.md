@@ -548,3 +548,25 @@ Outcome:
 
 Next action:
 - Continue to the pilot readiness final checklist review.
+
+## 2026-07-15 - Pilot readiness final checklist review
+
+Status: Complete for technical staging readiness.
+
+Verification:
+- Ran focused backend readiness tests: `tests/test_workspace_settings.py`, `tests/test_pilot_release_controls.py`, `tests/test_operations.py`, and `tests/test_ai_triage.py` passed 25/25.
+- Ran frontend typecheck: `pnpm --filter support-triage-web typecheck` passed.
+- Verified Cloud Run staging revision `sift-api-staging-00064-lxc` serves 100% traffic.
+- Verified Cloud Run `/health/ready` returned 200 and `/v1/status` reported database `ok` plus Pub/Sub task queue `ok`.
+- Verified deployed Vercel routes returned 200: `/dashboard`, `/dashboard/tickets`, `/dashboard/settings/gmail`, `/dashboard/settings/readiness`, and `/privacy`.
+- Verified staging posture: `GEMINI_MODEL=gemini-3.1-flash-lite`, `AI_TRIAGE_DAILY_GEMINI_LIMIT=20`, `DIRECT_SEND_ENABLED=false`, and `DIRECT_SEND_TEST_MODE=true`.
+
+Readiness decision:
+- Gmail-first technical pilot readiness is complete for staging verification.
+- Live direct send remains disabled; agents create Gmail drafts only.
+- Gemini remains free-only with app-side daily caps.
+- Outlook, chat channels, paid billing, full antivirus scanning, and self-serve hard deletion remain deferred.
+
+Manual sign-offs still required before a real public/commercial launch:
+- External legal review for privacy, terms, data processing, no-SLA/free-pilot language, and deletion/retention policy.
+- Pilot owner/admin visual check in the signed-in dashboard for the final workspace: Gmail health, operations panel, readiness checklist, approval-to-draft flow, and support contact.
