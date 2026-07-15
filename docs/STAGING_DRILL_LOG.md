@@ -570,3 +570,20 @@ Readiness decision:
 Manual sign-offs still required before a real public/commercial launch:
 - External legal review for privacy, terms, data processing, no-SLA/free-pilot language, and deletion/retention policy.
 - Pilot owner/admin visual check in the signed-in dashboard for the final workspace: Gmail health, operations panel, readiness checklist, approval-to-draft flow, and support contact.
+
+## 2026-07-15 - Signed-in pilot owner visual check and pilot runbook
+
+Status: Complete.
+
+Signed-in visual check:
+- Pilot owner/admin confirmed Settings -> Readiness looks good.
+- Pilot owner/admin confirmed Settings -> Gmail looks good.
+- Dashboard AI confidence placeholder and failed-triage fallback labels were found during signed-in review, fixed, deployed, and the stable Vercel alias was repointed to the latest deployment.
+- Remaining dashboard/ticket UI expectation: completed AI triage shows real confidence/classification; failed AI triage without a result shows `Not classified` instead of fallback `medium` / `other` labels.
+
+Pilot launch cleanup:
+- Added `docs/PILOT_RUNBOOK.md` with daily monitoring, Gmail degraded handling, AI triage failure handling, draft/approval policy, rollback quick reference, known deferred items, and pilot completion review notes.
+
+Outcome:
+- Gmail-first pilot hardening is complete from an engineering/staging-readiness standpoint.
+- Public/commercial launch still requires external legal review.

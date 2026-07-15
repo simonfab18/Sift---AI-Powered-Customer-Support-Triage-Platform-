@@ -230,3 +230,8 @@ Before validating staging:
 6. Connect or reconnect Gmail; the OAuth callback should register a Gmail watch and store the returned `historyId` and expiration.
 
 A successful push notification should receive a fast `200` response and create a `gmail_sync_events` record for known active connections, then dispatch history processing through the internal Pub/Sub task topic.
+
+## Pilot operations runbook
+
+Use docs/PILOT_RUNBOOK.md for Gmail-first pilot daily monitoring, degraded Gmail handling, AI triage failure handling, draft-only policy, rollback quick reference, known deferred items, and pilot completion review notes.
+
