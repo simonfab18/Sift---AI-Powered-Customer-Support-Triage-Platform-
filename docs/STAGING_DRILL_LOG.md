@@ -530,3 +530,21 @@ Verification:
 Outcome:
 - The pilot-hardening AI classification smoke checkpoint is complete for direct Gemini provider behavior.
 - Next pilot-hardening item: operator smoke for the dashboard operations panel and retry/degraded-state visibility.
+
+## 2026-07-15 - Pilot hardening dashboard operations smoke
+
+Status: Complete for backend behavior and deployed route availability.
+
+Verification:
+- Ran focused backend operations tests: `tests/test_operations.py` and `tests/test_security_authorization_matrix.py` passed 11/11.
+- Verified operations coverage includes owner/admin access, member denial, tenant boundary checks, degraded Gmail sync-health visibility, retryable failed-job listing, and safe retry job creation.
+- Verified Cloud Run staging readiness returned 200 and `/v1/status` reported database `ok` and Pub/Sub task queue `ok`.
+- Verified deployed Vercel dashboard route `/dashboard` returned 200.
+- Verified deployed Gmail settings route `/dashboard/settings/gmail`, linked from the operations panel, returned 200.
+
+Outcome:
+- The pilot dashboard operations panel is considered smoke-verified for retry/degraded-state backend behavior and deployed route availability.
+- Remaining optional manual check: sign in as an owner/admin and visually confirm the dashboard panel shows Gmail workflow health, failed jobs, retry buttons, and degraded inbox details when such data exists.
+
+Next action:
+- Continue to the pilot readiness final checklist review.
