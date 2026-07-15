@@ -28,6 +28,7 @@ function SourceInboxBadge({ ticket }: { ticket: TicketListItem }) {
     </span>
   );
 }
+
 function SlaBadge({ status }: { status: string }) {
   return <span className={`rounded-md px-2 py-1 text-xs font-medium capitalize ${slaTone[status] ?? "bg-slate-100 text-slate-600"}`}>{status.replaceAll("_", " ")}</span>;
 }
@@ -39,7 +40,7 @@ function triageState(ticket: TicketListItem) {
   if (status === "queued") return { label: "Queued", className: "border-sky-200 bg-sky-50 text-sky-700", detail: null as string | null };
   if (status === "triaging") return { label: "Running", className: "border-sky-200 bg-sky-50 text-sky-700", detail: null as string | null };
   if (status === "triage_failed") {
-    const quota = error.includes("quota") || error.includes("free gemini") || error.includes("too_many_requests");
+    const quota = error.includes("quota") || error.includes("free gemini") || error.includes("too_many_requests") || error.includes("prepayment credits");
     return {
       label: quota ? "AI paused" : "Retry needed",
       className: quota ? "border-amber-200 bg-amber-50 text-amber-800" : "border-rose-200 bg-rose-50 text-rose-700",
@@ -47,6 +48,25 @@ function triageState(ticket: TicketListItem) {
     };
   }
   return { label: status?.replaceAll("_", " ") || "Not queued", className: "border-slate-200 bg-slate-50 text-slate-600", detail: null as string | null };
+}
+
+function hasAiClassification(ticket: TicketListItem) {
+  return ticket.triage_status === "triaged";
+}
+
+function NotClassifiedBadge() {
+  return <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">Not classified</span>;
+}
+
+function ClassificationRail({ ticket, className }: { ticket: TicketListItem; className?: string }) {
+  if (hasAiClassification(ticket)) return <UrgencyRail priority={ticket.priority} className={className} />;
+  return <span className={`block w-1.5 bg-slate-200 ${className ?? ""}`} aria-hidden="true" />;
+}
+
+function TicketClassification({ ticket, type }: { ticket: TicketListItem; type: "priority" | "category" }) {
+  if (!hasAiClassification(ticket)) return <NotClassifiedBadge />;
+  if (type === "priority") return <TicketPriorityBadge priority={ticket.priority} />;
+  return <>{ticket.category.replaceAll("_", " ")}</>;
 }
 
 function TriageStateBadge({ ticket }: { ticket: TicketListItem }) {
@@ -99,7 +119,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
           <tbody className="divide-y divide-slate-100">
             {tickets.map((ticket) => (
               <tr key={ticket.id} className="hover:bg-slate-50">
-                <td className="px-0 py-0 align-stretch"><UrgencyRail priority={ticket.priority} className="h-full min-h-14 rounded-none" /></td>
+                <td className="px-0 py-0 align-stretch"><ClassificationRail ticket={ticket} className="h-full min-h-14 rounded-none" /></td>
                 {selectable ? (
                   <td className="px-3 py-3">
                     <input
@@ -114,8 +134,8 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
                 <td className="px-4 py-3 font-medium text-slate-900"><Link href={`/dashboard/tickets/${ticket.id}`}>{ticket.subject}</Link></td>
                 <td className="px-4 py-3 text-slate-600">{ticket.customer_name ?? ticket.customer_email}</td>
                 <td className="px-4 py-3"><SourceInboxBadge ticket={ticket} /></td>
-                <td className="px-4 py-3"><TicketPriorityBadge priority={ticket.priority} /></td>
-                <td className="px-4 py-3 text-slate-600">{ticket.category.replaceAll("_", " ")}</td>
+                <td className="px-4 py-3"><TicketClassification ticket={ticket} type="priority" /></td>
+                <td className="px-4 py-3 text-slate-600"><TicketClassification ticket={ticket} type="category" /></td>
                 <td className="px-4 py-3"><TicketStatusBadge status={ticket.status} /></td>
                 <td className="px-4 py-3"><TriageStateBadge ticket={ticket} /></td>
                 <td className="px-4 py-3"><SlaBadge status={ticket.sla_status ?? "on_track"} /></td>
@@ -129,7 +149,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
       <div className="divide-y divide-slate-100 md:hidden">
         {tickets.map((ticket) => (
           <div key={ticket.id} className="grid grid-cols-[auto_1fr] gap-3 p-4">
-            <UrgencyRail priority={ticket.priority} className="h-full" />
+            <ClassificationRail ticket={ticket} className="h-full rounded-full" />
             <div>
               <div className="flex items-start gap-3">
                 {selectable ? (
@@ -147,7 +167,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <TicketPriorityBadge priority={ticket.priority} />
+                <TicketClassification ticket={ticket} type="priority" />
                 <TicketStatusBadge status={ticket.status} />
                 <SlaBadge status={ticket.sla_status ?? "on_track"} />
                 <TriageStateBadge ticket={ticket} />
