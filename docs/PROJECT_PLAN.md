@@ -274,7 +274,7 @@ Owners and admins should be able to run one workspace with multiple Gmail inboxe
 ### M11 Closure Status
 
 - M11 Gmail-first product expansion is ready to move into pilot hardening. Completed staging checks cover multiple connected Gmail inboxes, source filters and saved views, import lock messaging, draft-created visibility, sync/watch guidance, attachment metadata/storage/download, shared-source Gmail settings, and the default-off attachment AI processing opt-in.
-- Real multi-email Gemini classification smoke remains blocked by provider credits/quota. A repeatable direct Gemini smoke runner now exists at `apps/api/scripts/gemini_triage_smoke.py` and was run against the staging Secret Manager key on 2026-07-15; Gemini still returned a prepayment-credits-depleted response. The app-side free-only cap and quota failure handling are deployed; paid quota expansion remains deferred.
+- Real multi-email Gemini classification smoke is now unblocked for staging. A repeatable direct Gemini smoke runner exists at `apps/api/scripts/gemini_triage_smoke.py`; after adding Secret Manager version `4` for `sift-staging-gemini-api-key` and updating Cloud Run to `GEMINI_MODEL=gemini-3.1-flash-lite`, the 2026-07-15 smoke passed 4/4 synthetic pilot cases. The app-side free-only cap and quota failure handling remain deployed; paid quota expansion remains deferred.
 
 ## Later Milestones
 
@@ -305,4 +305,5 @@ Owners and admins should be able to run one workspace with multiple Gmail inboxe
 - Next focus: pilot hardening for the Gmail-first workflow. Keep Outlook, chat channels, paid billing, and live direct send deferred unless explicitly approved.
 - Pilot hardening started with dashboard operations visibility: owner/admin users can see sync-health posture, degraded inboxes, failed jobs, retryability, next retry timing, and safe retry controls from the main dashboard.
 - Settings -> Readiness now includes a pilot launch checklist that summarizes whether the workspace is configured safely for a free Gmail pilot before a real support inbox is connected. Pilot support contact is now email-validated on both the frontend and backend, and a manual pilot smoke-test checklist guides Gmail health, ticket import, approval-to-draft, attachment download, operations posture, and rollback-note checks.
+
 

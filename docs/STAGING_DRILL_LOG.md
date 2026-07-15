@@ -498,3 +498,21 @@ Result:
 
 Next action:
 - Restore Gemini prepayment credits or provider availability in AI Studio, then rerun `apps/api/scripts/gemini_triage_smoke.py` before connecting a real pilot inbox.
+
+## 2026-07-15 - Gemini staging key/model update and classification smoke pass
+
+Status: Complete for staging Gemini provider smoke.
+
+Changes:
+- Added Secret Manager version `4` to `sift-staging-gemini-api-key` from the new Gemini API key.
+- Updated Cloud Run staging to `GEMINI_MODEL=gemini-3.1-flash-lite`.
+- Cloud Run revision `sift-api-staging-00064-lxc` serves 100% traffic and `/health/ready` returns 200.
+
+Smoke result:
+- Ran `apps/api/scripts/gemini_triage_smoke.py` with Secret Manager latest and `gemini-3.1-flash-lite`.
+- Result: 4/4 passed.
+- Verified classifications: refund/high, damaged_item/high, account_access/high, product_question/low.
+
+Notes:
+- The direct provider smoke is unblocked now.
+- Workspace/app daily triage caps still apply in the deployed product, so a workspace that already used most of today's free app-side allowance may have to wait for the UTC reset or have the cap adjusted deliberately.
