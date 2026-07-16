@@ -43,11 +43,37 @@ function formatConfidence(value?: number | null) {
 }
 
 function operationTone(job: OperationsJob) {
-  if (job.retryable) return "border-amber-200 bg-amber-50 text-amber-900";
   if (job.error_code === "quota_exceeded") return "border-sky-200 bg-sky-50 text-sky-800";
+  if (job.retryable) return "border-amber-200 bg-amber-50 text-amber-900";
   return "border-rose-200 bg-rose-50 text-rose-800";
 }
 
+function operationSeverityLabel(job: OperationsJob) {
+  if (job.error_code === "quota_exceeded") return "Paused by quota";
+  if (job.retryable) return "Retryable";
+  return "Manual review";
+}
+
+function operationNextStep(job: OperationsJob) {
+  const message = `${job.error_code ?? ""} ${job.error_message ?? ""}`.toLowerCase();
+  if (message.includes("quota") || message.includes("too_many_requests")) return "Wait for the Gemini quota window to reset, then retry. Dismiss only after a newer successful triage exists.";
+  if (job.job_type.includes("gmail") || job.job_type.includes("sync") || job.job_type.includes("import")) return "Open Gmail settings, check inbox health, then retry the job or reconnect the inbox if sync stays degraded.";
+  if (job.retryable) return "Retry is safe. If it fails again, check the error message and related resource before dismissing.";
+  return "Review the related ticket or inbox before dismissing this failure.";
+}
+
+function connectionNextStep(connection: SyncHealth["connections"][number]) {
+  if (connection.status !== "active") return "Reconnect or remove this inbox before relying on live sync.";
+  if (connection.watch_status !== "active") return "Renew the Gmail watch from Gmail settings.";
+  if (connection.sync_status !== "active") return "Queue an import from Gmail settings and review the latest sync error.";
+  if (connection.consecutive_sync_failures > 0) return "Run import now once, then watch whether failures continue.";
+  return "No action needed.";
+}
+
+function compactId(value?: string | null) {
+  if (!value) return null;
+  return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+}
 function syncHealthLabel(syncHealth: SyncHealth | null) {
   if (!syncHealth) return "Not loaded";
   if (syncHealth.degraded_connections > 0 || syncHealth.disconnected_connections > 0 || syncHealth.stale_connections > 0) return "Needs attention";
@@ -69,6 +95,7 @@ export function DashboardHome() {
   const [operationFailures, setOperationFailures] = useState<OperationsJob[]>([]);
   const [syncHealth, setSyncHealth] = useState<SyncHealth | null>(null);
   const [operationsMessage, setOperationsMessage] = useState<string | null>(null);
+  const [operationsLoadedAt, setOperationsLoadedAt] = useState<string | null>(null);
   const [retryingJobId, setRetryingJobId] = useState<string | null>(null);
   const [dismissingJobId, setDismissingJobId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -84,15 +111,17 @@ export function DashboardHome() {
   async function loadOperations(context: DashboardContext) {
     try {
       const [failureData, healthData] = await Promise.all([
-        getOperationsFailures(context.accessToken, context.organizationId, 5),
+        getOperationsFailures(context.accessToken, context.organizationId, 8),
         getSyncHealth(context.accessToken, context.organizationId),
       ]);
       setOperationFailures(failureData.jobs);
       setSyncHealth(healthData);
+      setOperationsLoadedAt(new Date().toISOString());
       setOperationsMessage(null);
     } catch (error) {
       setOperationFailures([]);
       setSyncHealth(null);
+      setOperationsLoadedAt(null);
       setOperationsMessage(error instanceof Error ? error.message : "Operations visibility is available to owners and admins.");
     }
   }
@@ -131,6 +160,15 @@ export function DashboardHome() {
   useEffect(() => {
     void loadDashboard();
   }, [supabase]);
+
+  async function handleRefreshOperations() {
+    const context = await getContext();
+    if (!context) {
+      setOperationsMessage("Select an organization and sign in before refreshing operations.");
+      return;
+    }
+    await loadOperations(context);
+  }
 
   async function handleRetryJob(job: OperationsJob) {
     const context = await getContext();
@@ -206,8 +244,12 @@ export function DashboardHome() {
             <p className="font-mono text-xs uppercase tracking-wide text-slate-500">Pilot operations</p>
             <h2 className="mt-2 font-display text-lg font-semibold text-slate-900">Gmail workflow health</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Watch for degraded sync, failed import or AI jobs, and safe retries before a pilot inbox gets busy.</p>
+            {operationsLoadedAt ? <p className="mt-1 text-xs text-slate-500">Last checked {formatDateTime(operationsLoadedAt)}</p> : null}
           </div>
-          <span className={`inline-flex w-fit rounded-md border px-2 py-1 text-xs font-medium ${syncHealthTone(syncHealth)}`}>{syncHealthLabel(syncHealth)}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => void handleRefreshOperations()} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50">Refresh ops</button>
+            <span className={`inline-flex w-fit rounded-md border px-2 py-1 text-xs font-medium ${syncHealthTone(syncHealth)}`}>{syncHealthLabel(syncHealth)}</span>
+          </div>
         </div>
 
         {operationsMessage ? <p className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">{operationsMessage}</p> : null}
@@ -237,7 +279,9 @@ export function DashboardHome() {
               <div key={connection.connection_id} className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                 <p className="font-medium">{connection.gmail_email}</p>
                 <p className="mt-1">Sync: {connection.sync_status ?? "unknown"} / Watch: {connection.watch_status ?? "unknown"}</p>
+                <p className="mt-1">Failures: {connection.consecutive_sync_failures} / Last success: {formatDateTime(connection.last_successful_sync_at)}</p>
                 {connection.sync_error_message ? <p className="mt-1 font-medium">{connection.sync_error_message}</p> : null}
+                <p className="mt-2 rounded bg-white/70 p-2 font-medium">Next: {connectionNextStep(connection)}</p>
               </div>
             ))}
           </div>
@@ -255,10 +299,27 @@ export function DashboardHome() {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="font-medium capitalize">{operationLabel(job.job_type)}</p>
-                    <p className="mt-1">{job.error_message ?? job.error_code ?? "Job failed without a detailed message."}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className="rounded bg-white/70 px-2 py-1 font-medium">{operationSeverityLabel(job)}</span>
+                      {job.error_code ? <span className="rounded bg-white/70 px-2 py-1 font-mono">{job.error_code}</span> : null}
+                      {job.alert_owner ? <span className="rounded bg-white/70 px-2 py-1">Owner: {job.alert_owner}</span> : null}
+                    </div>
+                    <p className="mt-2">{job.error_message ?? job.error_code ?? "Job failed without a detailed message."}</p>
                     <p className="mt-1 opacity-80">Attempts {job.attempts}/{job.max_attempts}{job.next_retry_at ? ` / next retry ${formatDateTime(job.next_retry_at)}` : ""}</p>
+                    <p className="mt-2 rounded bg-white/70 p-2 font-medium">Next: {operationNextStep(job)}</p>
+                    <div className="mt-2 flex flex-wrap gap-2 opacity-80">
+                      {job.related_resource_type && job.related_resource_id ? <span>Related {job.related_resource_type}: <span className="font-mono">{compactId(job.related_resource_id)}</span></span> : null}
+                      {job.correlation_id ? <span>Correlation: <span className="font-mono">{compactId(job.correlation_id)}</span></span> : null}
+                      <span>Created {formatDateTime(job.created_at)}</span>
+                      {job.duration_ms !== null ? <span>Duration {job.duration_ms} ms</span> : null}
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-2 sm:justify-end">
+                    {job.runbook_url ? (
+                      <a href={job.runbook_url} target="_blank" rel="noreferrer" className="rounded-md bg-white/80 px-3 py-2 font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300">
+                        Runbook
+                      </a>
+                    ) : null}
                     {job.retryable ? (
                       <button type="button" onClick={() => void handleRetryJob(job)} disabled={retryingJobId === job.id || dismissingJobId === job.id} className="rounded-md bg-white px-3 py-2 font-medium text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 disabled:opacity-50">
                         {retryingJobId === job.id ? "Retrying..." : "Retry"}
