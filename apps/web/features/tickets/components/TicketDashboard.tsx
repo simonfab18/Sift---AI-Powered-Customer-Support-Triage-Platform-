@@ -26,6 +26,14 @@ const urgencyOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, 
 const statusOptions = ["all", "new", "open", "pending", "awaiting_approval", "draft_created", "resolved", "spam"];
 const slaOptions = ["all", "on_track", "warning", "breached", "paused"];
 
+function slaSortValue(ticket: TicketListItem) {
+  const statusRank: Record<string, number> = { breached: 0, warning: 1, on_track: 2, paused: 3 };
+  const dueTimes = [ticket.first_review_due_at, ticket.resolution_due_at]
+    .map((value) => (value ? new Date(value).getTime() : Number.POSITIVE_INFINITY))
+    .filter((value) => !Number.isNaN(value));
+  return [statusRank[ticket.sla_status] ?? 4, Math.min(...dueTimes)] as const;
+}
+
 export function TicketDashboard() {
   const supabase = createClient();
   const [tickets, setTickets] = useState<TicketListItem[]>([]);
@@ -122,6 +130,11 @@ export function TicketDashboard() {
       })
       .sort((left, right) => {
         if (sort === "recent") return new Date(right.received_at).getTime() - new Date(left.received_at).getTime();
+        if (sort === "sla") {
+          const [leftStatus, leftDue] = slaSortValue(left);
+          const [rightStatus, rightDue] = slaSortValue(right);
+          return leftStatus - rightStatus || leftDue - rightDue || new Date(right.received_at).getTime() - new Date(left.received_at).getTime();
+        }
         return (urgencyOrder[left.priority] ?? 4) - (urgencyOrder[right.priority] ?? 4) || new Date(right.received_at).getTime() - new Date(left.received_at).getTime();
       });
   }, [tickets, query, urgency, statusFilter, slaFilter, inboxFilter, sourceTypeFilter, sort]);
@@ -347,6 +360,7 @@ export function TicketDashboard() {
           <select value={sort} onChange={(event) => setSort(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
             <option value="urgency">Sort by urgency</option>
             <option value="recent">Sort by recency</option>
+            <option value="sla">Sort by SLA risk</option>
           </select>
         </div>
 

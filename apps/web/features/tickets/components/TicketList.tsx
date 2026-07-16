@@ -29,6 +29,37 @@ function SourceInboxBadge({ ticket }: { ticket: TicketListItem }) {
   );
 }
 
+function slaTarget(ticket: TicketListItem) {
+  const targets = [
+    { label: "First review", value: ticket.first_review_due_at },
+    { label: "Resolution", value: ticket.resolution_due_at },
+  ]
+    .map((target) => ({ ...target, date: target.value ? new Date(target.value) : null }))
+    .filter((target): target is { label: string; value: string; date: Date } => Boolean(target.value && target.date && !Number.isNaN(target.date.getTime())))
+    .sort((first, second) => first.date.getTime() - second.date.getTime());
+  return targets[0] ?? null;
+}
+
+function relativeDue(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const diffMs = date.getTime() - Date.now();
+  const absMinutes = Math.max(1, Math.round(Math.abs(diffMs) / 60000));
+  const hours = Math.floor(absMinutes / 60);
+  const minutes = absMinutes % 60;
+  const compact = hours > 0 ? `${hours}h${minutes ? ` ${minutes}m` : ""}` : `${minutes}m`;
+  return diffMs < 0 ? `overdue by ${compact}` : `due in ${compact}`;
+}
+
+function slaLabel(ticket: TicketListItem) {
+  if (ticket.sla_status === "paused") return "Paused";
+  const target = slaTarget(ticket);
+  if (!target) return ticket.sla_status.replaceAll("_", " ");
+  if (ticket.sla_status === "breached") return `${target.label} breached`;
+  if (ticket.sla_status === "warning") return `${target.label} at risk`;
+  return `${target.label} on track`;
+}
 function formatDue(value?: string | null) {
   if (!value) return null;
   const date = new Date(value);
@@ -37,20 +68,22 @@ function formatDue(value?: string | null) {
 }
 
 function slaDetail(ticket: TicketListItem) {
-  const reviewDue = formatDue(ticket.first_review_due_at);
-  const resolutionDue = formatDue(ticket.resolution_due_at);
-  if (ticket.sla_status === "paused") return "Paused because the ticket is pending, resolved, or spam.";
-  if (ticket.sla_status === "breached") return reviewDue ? `First review was due ${reviewDue}.` : resolutionDue ? `Resolution was due ${resolutionDue}.` : "SLA target has passed.";
-  if (ticket.sla_status === "warning") return reviewDue ? `First review due soon: ${reviewDue}.` : resolutionDue ? `Resolution due soon: ${resolutionDue}.` : "SLA target is close.";
-  return reviewDue ? `First review due ${reviewDue}.` : resolutionDue ? `Resolution due ${resolutionDue}.` : "No SLA target set.";
+  if (ticket.sla_status === "paused") return "Timer paused because the ticket is pending, resolved, or spam.";
+  const target = slaTarget(ticket);
+  if (!target) return "No SLA target set.";
+  const due = formatDue(target.value);
+  const relative = relativeDue(target.value);
+  if (ticket.sla_status === "breached") return `${target.label} was due ${due}${relative ? ` (${relative})` : ""}.`;
+  if (ticket.sla_status === "warning") return `${target.label} is due soon: ${due}${relative ? ` (${relative})` : ""}.`;
+  return `${target.label} due ${due}${relative ? ` (${relative})` : ""}.`;
 }
 
 function SlaBadge({ ticket }: { ticket: TicketListItem }) {
   const status = ticket.sla_status ?? "on_track";
   return (
     <span className={`inline-flex max-w-44 flex-col rounded-md px-2 py-1 text-xs font-medium capitalize ${slaTone[status] ?? "bg-slate-100 text-slate-600"}`} title={slaDetail(ticket)}>
-      <span>{status.replaceAll("_", " ")}</span>
-      <span className="mt-0.5 truncate font-normal normal-case opacity-80">{slaDetail(ticket)}</span>
+      <span>{slaLabel(ticket)}</span>
+      <span className="mt-0.5 truncate font-normal normal-case opacity-80">{ticket.sla_status === "paused" ? "No active timer" : relativeDue(slaTarget(ticket)?.value) ?? slaDetail(ticket)}</span>
     </span>
   );
 }
@@ -206,7 +239,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
                 <SlaBadge ticket={ticket} />
                 <TriageStateBadge ticket={ticket} />
               </div>
-              {ticket.first_review_due_at ? <p className="mt-2 text-xs text-slate-500">Review due {new Date(ticket.first_review_due_at).toLocaleString()}</p> : null}
+              {slaTarget(ticket) ? <p className="mt-2 text-xs text-slate-500">{slaLabel(ticket)}: {slaDetail(ticket)}</p> : null}
             </div>
           </div>
         ))}

@@ -114,13 +114,53 @@ function formatReplyVersionTime(value: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
+function slaTarget(ticket: Ticket) {
+  const targets = [
+    { label: "First review", value: ticket.first_review_due_at },
+    { label: "Resolution", value: ticket.resolution_due_at },
+  ]
+    .map((target) => ({ ...target, date: target.value ? new Date(target.value) : null }))
+    .filter((target): target is { label: string; value: string; date: Date } => Boolean(target.value && target.date && !Number.isNaN(target.date.getTime())))
+    .sort((first, second) => first.date.getTime() - second.date.getTime());
+  return targets[0] ?? null;
+}
+
+function relativeDue(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const diffMs = date.getTime() - Date.now();
+  const absMinutes = Math.max(1, Math.round(Math.abs(diffMs) / 60000));
+  const hours = Math.floor(absMinutes / 60);
+  const minutes = absMinutes % 60;
+  const compact = hours > 0 ? `${hours}h${minutes ? ` ${minutes}m` : ""}` : `${minutes}m`;
+  return diffMs < 0 ? `overdue by ${compact}` : `due in ${compact}`;
+}
+
+function slaLabel(ticket: Ticket) {
+  if (ticket.sla_status === "paused") return "SLA paused";
+  const target = slaTarget(ticket);
+  if (!target) return `SLA ${ticket.sla_status.replaceAll("_", " ")}`;
+  if (ticket.sla_status === "breached") return `${target.label} breached`;
+  if (ticket.sla_status === "warning") return `${target.label} at risk`;
+  return `${target.label} on track`;
+}
+
+function slaTone(status: string) {
+  if (status === "breached") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (status === "warning") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (status === "paused") return "border-slate-200 bg-slate-100 text-slate-600";
+  return "border-teal-200 bg-teal-50 text-teal-700";
+}
 function slaExplanation(ticket: Ticket) {
-  const reviewDue = formatDue(ticket.first_review_due_at);
-  const resolutionDue = formatDue(ticket.resolution_due_at);
-  if (ticket.sla_status === "paused") return "Paused because the ticket is pending, resolved, or spam.";
-  if (ticket.sla_status === "breached") return reviewDue ? `First review was due ${reviewDue}.` : resolutionDue ? `Resolution was due ${resolutionDue}.` : "SLA target has passed.";
-  if (ticket.sla_status === "warning") return reviewDue ? `First review due soon: ${reviewDue}.` : resolutionDue ? `Resolution due soon: ${resolutionDue}.` : "SLA target is close.";
-  return reviewDue ? `First review due ${reviewDue}.` : resolutionDue ? `Resolution due ${resolutionDue}.` : "No SLA target set.";
+  if (ticket.sla_status === "paused") return "Timer paused because the ticket is pending, resolved, or spam.";
+  const target = slaTarget(ticket);
+  if (!target) return "No SLA target set.";
+  const due = formatDue(target.value);
+  const relative = relativeDue(target.value);
+  if (ticket.sla_status === "breached") return `${target.label} was due ${due}${relative ? ` (${relative})` : ""}.`;
+  if (ticket.sla_status === "warning") return `${target.label} is due soon: ${due}${relative ? ` (${relative})` : ""}.`;
+  return `${target.label} due ${due}${relative ? ` (${relative})` : ""}.`;
 }
 
 function workflowStatus(ticket: Ticket, latestSuggestion?: ReplySuggestion) {
@@ -605,6 +645,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const latestSuggestion = replySuggestions[0];
   const currentWorkflow = ticket ? workflowStatus(ticket, latestSuggestion) : null;
   const currentSlaExplanation = ticket ? slaExplanation(ticket) : null;
+  const currentSlaTarget = ticket ? slaTarget(ticket) : null;
   const currentTriageChange = latestTriageChange(events);
   const triageFailedWithoutResult = ticket?.triage_status === "triage_failed" && !latestTriage;
   const displayedCategory = triageFailedWithoutResult ? "Not classified" : ticket?.category.replaceAll("_", " ");
@@ -645,9 +686,9 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                     <span>{currentWorkflow?.label}</span>
                     {currentWorkflow?.detail ? <span className="mt-0.5 font-normal normal-case text-slate-500">{currentWorkflow.detail}</span> : null}
                   </span>
-                  <span className="inline-flex max-w-64 flex-col rounded-md bg-slate-100 px-2 py-1 text-xs font-medium capitalize text-slate-600" title={currentSlaExplanation ?? undefined}>
-                    <span>SLA {ticket.sla_status.replaceAll("_", " ")}</span>
-                    {currentSlaExplanation ? <span className="mt-0.5 truncate font-normal normal-case text-slate-500">{currentSlaExplanation}</span> : null}
+                  <span className={`inline-flex max-w-64 flex-col rounded-md border px-2 py-1 text-xs font-medium ${slaTone(ticket.sla_status)}`} title={currentSlaExplanation ?? undefined}>
+                    <span>{slaLabel(ticket)}</span>
+                    {currentSlaExplanation ? <span className="mt-0.5 truncate font-normal normal-case opacity-80">{ticket.sla_status === "paused" ? "No active timer" : relativeDue(currentSlaTarget?.value) ?? currentSlaExplanation}</span> : null}
                   </span>
                 </div>
               </div>
@@ -719,8 +760,8 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                 <div><dt className="text-slate-500">Category</dt><dd className="mt-1 font-medium capitalize">{displayedCategory}</dd></div>
                 <div><dt className="text-slate-500">Triage</dt><dd className="mt-1"><span className={`inline-flex rounded-md border px-2 py-1 text-xs font-medium capitalize ${triageStatusTone(ticket.triage_status)}`}>{triageStatusLabel(ticket.triage_status)}</span></dd></div>
                 <div><dt className="text-slate-500">Review</dt><dd className="mt-1 font-medium">{displayedReview}</dd></div>
-                <div><dt className="text-slate-500">First review due</dt><dd className="mt-1 font-medium">{ticket.first_review_due_at ? new Date(ticket.first_review_due_at).toLocaleString() : "Not set"}</dd></div>
-                <div><dt className="text-slate-500">Resolution due</dt><dd className="mt-1 font-medium">{ticket.resolution_due_at ? new Date(ticket.resolution_due_at).toLocaleString() : "Not set"}</dd></div>
+                <div><dt className="text-slate-500">Active SLA target</dt><dd className="mt-1 font-medium">{currentSlaTarget ? `${currentSlaTarget.label}: ${formatDue(currentSlaTarget.value)}` : "Not set"}</dd></div>
+                <div><dt className="text-slate-500">SLA timer</dt><dd className="mt-1 font-medium">{ticket.sla_status === "paused" ? "Paused" : relativeDue(currentSlaTarget?.value) ?? "Not set"}</dd></div>
               </dl>
               {triageFailedWithoutResult ? (
                 <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
