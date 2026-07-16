@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { StatCard } from "@/components/ui/StatCard";
 import { TriageMeter } from "@/components/ui/TriageMeter";
 import { getStoredOrganizationId } from "@/features/organizations/components/OrganizationManager";
-import { getGmailConnections } from "@/lib/api-client";
-import type { GmailConnection } from "@/lib/api-types";
+import { getGmailConnections, getMembers } from "@/lib/api-client";
+import type { GmailConnection, Member } from "@/lib/api-types";
 import { createClient } from "@/lib/supabase/client";
 import {
   createSavedView,
@@ -19,7 +19,7 @@ import {
   runBulkTicketAction,
   updateSavedView,
 } from "../api";
-import type { MetricsOverview, SavedView, TicketListItem } from "../types";
+import type { BulkActionResponse, MetricsOverview, SavedView, TicketListItem } from "../types";
 import { TicketList } from "./TicketList";
 
 const urgencyOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -32,6 +32,7 @@ export function TicketDashboard() {
   const [metrics, setMetrics] = useState<MetricsOverview | null>(null);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [gmailConnections, setGmailConnections] = useState<GmailConnection[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -45,6 +46,7 @@ export function TicketDashboard() {
   const [bulkAction, setBulkAction] = useState("resolve");
   const [bulkStatus, setBulkStatus] = useState("pending");
   const [bulkAssignee, setBulkAssignee] = useState("");
+  const [lastBulkResult, setLastBulkResult] = useState<BulkActionResponse | null>(null);
   const [viewName, setViewName] = useState("");
   const [savingView, setSavingView] = useState(false);
   const [updatingView, setUpdatingView] = useState(false);
@@ -73,7 +75,7 @@ export function TicketDashboard() {
     }
 
     try {
-      const [loadedTickets, loadedMetrics, views, connections] = await Promise.all([
+      const [loadedTickets, loadedMetrics, views, connections, loadedMembers] = await Promise.all([
         getTickets(context.organizationId, context.accessToken, {
           status: statusFilter,
           priority: urgency,
@@ -84,11 +86,13 @@ export function TicketDashboard() {
         getMetricsOverview(context.organizationId, context.accessToken),
         getSavedViews(context.organizationId, context.accessToken).catch(() => []),
         getGmailConnections(context.accessToken, context.organizationId).catch(() => []),
+        getMembers(context.accessToken, context.organizationId).catch(() => []),
       ]);
       setTickets(loadedTickets);
       setMetrics(loadedMetrics);
       setSavedViews(views);
       setGmailConnections(connections);
+      setMembers(loadedMembers);
       setSelectedIds(new Set());
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to load tickets.");
@@ -233,6 +237,7 @@ export function TicketDashboard() {
     const context = await getContext();
     if (!context) return;
     const destructive = action === "resolve" || action === "mark_spam";
+    const assignee = bulkAssignee.trim();
 
     setRunningBulk(true);
     setMessage(null);
@@ -240,13 +245,14 @@ export function TicketDashboard() {
       const result = await runBulkTicketAction(context.organizationId, context.accessToken, {
         ticket_ids: ticketIds,
         action,
-        assigned_to_user_id: action === "assign" ? bulkAssignee.trim() || null : undefined,
+        assigned_to_user_id: action === "assign" ? assignee || null : undefined,
         status: action === "change_status" ? bulkStatus : undefined,
         confirm: destructive ? confirmed : undefined,
       });
       const succeeded = result.results.filter((item) => item.success).length;
       const failed = result.results.length - succeeded;
       setPendingBulkConfirm(null);
+      setLastBulkResult(result);
       await loadTickets();
       setMessage(`${bulkActionLabel(action)} finished: ${succeeded} ticket${succeeded === 1 ? "" : "s"} updated${failed ? `, ${failed} failed` : ""}.`);
     } catch (error) {
@@ -260,11 +266,18 @@ export function TicketDashboard() {
     const ticketIds = Array.from(selectedIds);
     if (ticketIds.length === 0) {
       setMessage("Select tickets before running a bulk action.");
+      setLastBulkResult(null);
+      return;
+    }
+    if (bulkAction === "assign" && !bulkAssignee.trim()) {
+      setMessage("Choose a teammate before assigning selected tickets.");
+      setLastBulkResult(null);
       return;
     }
     const destructive = bulkAction === "resolve" || bulkAction === "mark_spam";
     if (destructive) {
       setPendingBulkConfirm({ action: bulkAction, ticketIds });
+      setLastBulkResult(null);
       setMessage(null);
       return;
     }
@@ -380,7 +393,12 @@ export function TicketDashboard() {
               {statusOptions.filter((status) => status !== "all").map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
             </select>
           ) : bulkAction === "assign" ? (
-            <input value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)} placeholder="User ID" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+              <option value="">Choose teammate</option>
+              {members.filter((member) => member.status === "active").map((member) => (
+                <option key={member.id} value={member.user_id}>{member.email} / {member.role}</option>
+              ))}
+            </select>
           ) : <span />}
           <Button type="button" variant="primary" onClick={() => void handleBulkAction()} disabled={runningBulk || selectedIds.size === 0}>{runningBulk ? "Running..." : "Apply"}</Button>
         </div>
@@ -400,6 +418,23 @@ export function TicketDashboard() {
         ) : null}
       </div>
 
+      {lastBulkResult ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <p className="font-medium capitalize text-slate-800">{bulkActionLabel(lastBulkResult.action)} results</p>
+            <p className="text-slate-500">{lastBulkResult.results.filter((item) => item.success).length} succeeded / {lastBulkResult.results.filter((item) => !item.success).length} failed</p>
+          </div>
+          {lastBulkResult.results.some((item) => !item.success) ? (
+            <div className="mt-3 space-y-2">
+              {lastBulkResult.results.filter((item) => !item.success).map((item) => (
+                <div key={item.ticket_id} className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800">
+                  <span className="font-mono text-xs">{item.ticket_id}</span> / {item.error ?? "Action failed"}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {loading ? (
         <p className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600">Loading tickets...</p>
       ) : (

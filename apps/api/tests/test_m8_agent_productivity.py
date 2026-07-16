@@ -120,6 +120,34 @@ def test_bulk_actions_return_per_item_results_and_require_destructive_confirmati
         assert audit is not None
 
 
+def test_bulk_assignment_uses_active_member_and_reports_item_failures(client, create_org) -> None:
+    organization = create_org()
+    add_agent_member(client, organization["id"])
+    first_ticket = create_ticket(client, organization["id"], subject="Assign me first")
+    second_ticket = create_ticket(client, organization["id"], subject="Assign me second")
+
+    response = client.post(
+        f"/v1/orgs/{organization['id']}/tickets/bulk-actions",
+        json={
+            "ticket_ids": [first_ticket["id"], second_ticket["id"], "missing-ticket"],
+            "action": "assign",
+            "assigned_to_user_id": "user-agent",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["action"] == "assign"
+    assert body["results"][0]["success"] is True
+    assert body["results"][0]["ticket"]["assigned_to_user_id"] == "user-agent"
+    assert body["results"][1]["success"] is True
+    assert body["results"][1]["ticket"]["assigned_to_user_id"] == "user-agent"
+    assert body["results"][2] == {"ticket_id": "missing-ticket", "success": False, "ticket": None, "error": "Ticket not found"}
+
+    with client.session_factory() as db:
+        audit = db.scalar(select(AuditLog).where(AuditLog.action == "ticket.bulk_action_item_succeeded"))
+        assert audit is not None
+
 def test_response_template_insert_creates_editable_unapproved_suggestion(client, create_org) -> None:
     organization = create_org()
     ticket = create_ticket(client, organization["id"])
