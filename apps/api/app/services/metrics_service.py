@@ -82,9 +82,15 @@ def get_metrics_overview(db: Session, organization_id: str, actor: Authenticated
         .where(Ticket.organization_id == organization_id)
         .group_by(Ticket.priority)
     ).all()
+    active_priority_rows = db.execute(
+        select(Ticket.priority, func.count(Ticket.id))
+        .where(Ticket.organization_id == organization_id, Ticket.status.in_(ACTIVE_STATUSES))
+        .group_by(Ticket.priority)
+    ).all()
 
     by_status = _count_rows(status_rows)
     by_priority = _count_rows(priority_rows)
+    by_active_priority = _count_rows(active_priority_rows)
     confidence_scores = list(
         db.scalars(
             select(AITriageResult.confidence_score).where(
@@ -98,12 +104,13 @@ def get_metrics_overview(db: Session, organization_id: str, actor: Authenticated
         active_tickets=sum(by_status.get(status, 0) for status in ACTIVE_STATUSES),
         resolved_tickets=by_status.get(TicketStatus.RESOLVED.value, 0),
         spam_tickets=by_status.get(TicketStatus.SPAM.value, 0),
-        critical_tickets=by_priority.get("critical", 0),
-        high_priority_tickets=by_priority.get("high", 0),
+        critical_tickets=by_active_priority.get("critical", 0),
+        high_priority_tickets=by_active_priority.get("high", 0),
         draft_created_tickets=by_status.get(TicketStatus.DRAFT_CREATED.value, 0),
         average_confidence_score=round(mean(confidence_scores), 2) if confidence_scores else None,
         by_status=by_status,
         by_priority=by_priority,
+        by_active_priority=by_active_priority,
     )
 
 

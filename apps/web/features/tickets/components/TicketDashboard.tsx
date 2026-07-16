@@ -47,6 +47,7 @@ export function TicketDashboard() {
   const [viewName, setViewName] = useState("");
   const [savingView, setSavingView] = useState(false);
   const [runningBulk, setRunningBulk] = useState(false);
+  const [pendingBulkConfirm, setPendingBulkConfirm] = useState<{ action: string; ticketIds: string[] } | null>(null);
 
   async function getContext() {
     const organizationId = getStoredOrganizationId();
@@ -176,36 +177,51 @@ export function TicketDashboard() {
     }
   }
 
-  async function handleBulkAction() {
+  function bulkActionLabel(action: string) {
+    return action.replaceAll("_", " ");
+  }
+
+  async function executeBulkAction(ticketIds: string[], action: string, confirmed: boolean) {
     const context = await getContext();
     if (!context) return;
-    const ticketIds = Array.from(selectedIds);
-    if (ticketIds.length === 0) {
-      setMessage("Select tickets before running a bulk action.");
-      return;
-    }
-    const destructive = bulkAction === "resolve" || bulkAction === "mark_spam";
-    if (destructive && !window.confirm(`Apply ${bulkAction.replaceAll("_", " ")} to ${ticketIds.length} selected tickets?`)) return;
+    const destructive = action === "resolve" || action === "mark_spam";
 
     setRunningBulk(true);
     setMessage(null);
     try {
       const result = await runBulkTicketAction(context.organizationId, context.accessToken, {
         ticket_ids: ticketIds,
-        action: bulkAction,
-        assigned_to_user_id: bulkAction === "assign" ? bulkAssignee.trim() || null : undefined,
-        status: bulkAction === "change_status" ? bulkStatus : undefined,
-        confirm: destructive,
+        action,
+        assigned_to_user_id: action === "assign" ? bulkAssignee.trim() || null : undefined,
+        status: action === "change_status" ? bulkStatus : undefined,
+        confirm: destructive ? confirmed : undefined,
       });
       const succeeded = result.results.filter((item) => item.success).length;
       const failed = result.results.length - succeeded;
+      setPendingBulkConfirm(null);
       await loadTickets();
-      setMessage(`Bulk action finished: ${succeeded} succeeded${failed ? `, ${failed} failed` : ""}.`);
+      setMessage(`${bulkActionLabel(action)} finished: ${succeeded} ticket${succeeded === 1 ? "" : "s"} updated${failed ? `, ${failed} failed` : ""}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Bulk action failed.");
     } finally {
       setRunningBulk(false);
     }
+  }
+
+  async function handleBulkAction() {
+    const ticketIds = Array.from(selectedIds);
+    if (ticketIds.length === 0) {
+      setMessage("Select tickets before running a bulk action.");
+      return;
+    }
+    const destructive = bulkAction === "resolve" || bulkAction === "mark_spam";
+    if (destructive) {
+      setPendingBulkConfirm({ action: bulkAction, ticketIds });
+      setMessage(null);
+      return;
+    }
+
+    await executeBulkAction(ticketIds, bulkAction, false);
   }
 
   return (
@@ -292,7 +308,7 @@ export function TicketDashboard() {
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="grid gap-3 lg:grid-cols-[auto_auto_1fr_auto] lg:items-center">
           <p className="text-sm font-medium text-slate-700">{selectedIds.size} selected</p>
-          <select value={bulkAction} onChange={(event) => setBulkAction(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+          <select value={bulkAction} onChange={(event) => { setBulkAction(event.target.value); setPendingBulkConfirm(null); }} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
             <option value="resolve">Resolve</option>
             <option value="mark_spam">Mark spam</option>
             <option value="change_status">Change status</option>
@@ -308,6 +324,20 @@ export function TicketDashboard() {
           ) : <span />}
           <Button type="button" variant="primary" onClick={() => void handleBulkAction()} disabled={runningBulk || selectedIds.size === 0}>{runningBulk ? "Running..." : "Apply"}</Button>
         </div>
+        {pendingBulkConfirm ? (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="font-medium capitalize">Confirm {bulkActionLabel(pendingBulkConfirm.action)}</p>
+                <p className="mt-1 text-amber-800">This will update {pendingBulkConfirm.ticketIds.length} selected ticket{pendingBulkConfirm.ticketIds.length === 1 ? "" : "s"}. You can still find resolved or spam tickets by changing the status filter.</p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button type="button" variant="outline" onClick={() => setPendingBulkConfirm(null)} disabled={runningBulk}>Cancel</Button>
+                <Button type="button" variant="primary" onClick={() => void executeBulkAction(pendingBulkConfirm.ticketIds, pendingBulkConfirm.action, true)} disabled={runningBulk}>{runningBulk ? "Applying..." : "Confirm"}</Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {loading ? (

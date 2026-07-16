@@ -187,9 +187,11 @@ def test_dashboard_metrics_count_only_organization_tickets(client: TestClient, c
     assert body["resolved_tickets"] == 1
     assert body["spam_tickets"] == 1
     assert body["critical_tickets"] == 1
-    assert body["high_priority_tickets"] == 1
+    assert body["high_priority_tickets"] == 0
     assert body["average_confidence_score"] == 87
     assert body["by_status"] == {"new": 1, "resolved": 1, "spam": 1}
+    assert body["by_priority"] == {"critical": 1, "high": 1, "low": 1}
+    assert body["by_active_priority"] == {"critical": 1}
 
 
 def test_filters_return_expected_tickets(client: TestClient, create_org) -> None:

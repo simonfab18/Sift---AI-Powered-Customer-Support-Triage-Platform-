@@ -12,6 +12,7 @@ class MetricsOverviewRead(BaseModel):
     average_confidence_score: float | None = None
     by_status: dict[str, int]
     by_priority: dict[str, int]
+    by_active_priority: dict[str, int]
 
 
 class AgentWorkloadRead(BaseModel):
@@ -24,6 +25,7 @@ class SupportPerformanceAnalyticsRead(BaseModel):
     ticket_volume: int
     by_category: dict[str, int]
     by_priority: dict[str, int]
+    by_active_priority: dict[str, int]
     first_review_time_avg_minutes: float | None = None
     resolution_time_avg_minutes: float | None = None
     approval_wait_time_avg_minutes: float | None = None

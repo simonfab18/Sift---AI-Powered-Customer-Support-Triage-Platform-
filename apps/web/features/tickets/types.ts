@@ -201,6 +201,7 @@ export type MetricsOverview = {
   average_confidence_score: number | null;
   by_status: Record<string, number>;
   by_priority: Record<string, number>;
+  by_active_priority: Record<string, number>;
 };
 
 export type SavedView = {
@@ -364,6 +365,7 @@ export type SupportPerformanceAnalytics = {
   ticket_volume: number;
   by_category: Record<string, number>;
   by_priority: Record<string, number>;
+  by_active_priority: Record<string, number>;
   first_review_time_avg_minutes: number | null;
   resolution_time_avg_minutes: number | null;
   approval_wait_time_avg_minutes: number | null;
