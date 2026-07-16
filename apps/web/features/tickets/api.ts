@@ -269,6 +269,30 @@ export async function getResponseTemplates(
   return ticketApiFetch<ResponseTemplate[]>(`/v1/orgs/${organizationId}/response-templates${query}`, accessToken);
 }
 
+
+export async function createResponseTemplate(
+  organizationId: string,
+  accessToken: string,
+  payload: { name: string; body: string; category_tags: string[] },
+): Promise<ResponseTemplate> {
+  return ticketApiFetch<ResponseTemplate>(`/v1/orgs/${organizationId}/response-templates`, accessToken, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateResponseTemplate(
+  organizationId: string,
+  accessToken: string,
+  templateId: string,
+  payload: { name?: string; body?: string; category_tags?: string[]; archived?: boolean },
+): Promise<ResponseTemplate> {
+  return ticketApiFetch<ResponseTemplate>(`/v1/orgs/${organizationId}/response-templates/${templateId}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function insertResponseTemplate(
   organizationId: string,
   accessToken: string,

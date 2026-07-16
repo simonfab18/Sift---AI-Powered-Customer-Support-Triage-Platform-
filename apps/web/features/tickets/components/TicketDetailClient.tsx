@@ -11,6 +11,7 @@ import { getMe } from "@/lib/api-client";
 import {
   acquireCollaborationLock,
   approveReplySuggestion,
+  createResponseTemplate,
   createGmailDraftFromSuggestion,
   createInternalNote,
   getInternalNoteEdits,
@@ -33,6 +34,7 @@ import {
   storeTicketAttachment,
   updateInternalNote,
   updateReplySuggestion,
+  updateResponseTemplate,
 } from "../api";
 import type {
   AITriageResult,
@@ -147,6 +149,13 @@ function latestTriageChange(events: TicketEvent[]) {
   const adjustments = Array.isArray(event.event_metadata.policy_adjustments) ? event.event_metadata.policy_adjustments.join("; ") : null;
   return { previousPriority, newPriority, previousCategory, newCategory, adjustments };
 }
+
+function parseTemplateTags(value: string) {
+  return value
+    .split(",")
+    .map((tag) => tag.trim().toLowerCase())
+    .filter((tag, index, tags) => tag.length > 0 && tags.indexOf(tag) === index);
+}
 function triageFailureMessage(ticket: Ticket) {
   if (ticket.triage_status !== "triage_failed") return null;
   const error = ticket.triage_error_message ?? "AI triage did not complete.";
@@ -178,6 +187,11 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const [noteMentions, setNoteMentions] = useState<Record<string, InternalNoteMention[]>>({});
   const [replyText, setReplyText] = useState("");
   const [templateSearch, setTemplateSearch] = useState("");
+  const [templateTagFilter, setTemplateTagFilter] = useState("all");
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateTags, setNewTemplateTags] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [archivingTemplateId, setArchivingTemplateId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
@@ -429,6 +443,50 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     }
   }
 
+
+  async function handleCreateTemplate() {
+    const context = await getSessionContext();
+    const body = replyText.trim();
+    const name = newTemplateName.trim();
+    if (!context || !name || !body) {
+      setMessage("Add a template name and reply body before saving a template.");
+      return;
+    }
+    setSavingTemplate(true);
+    setMessage(null);
+    try {
+      const template = await createResponseTemplate(context.organizationId, context.accessToken, {
+        name,
+        body,
+        category_tags: parseTemplateTags(newTemplateTags),
+      });
+      setTemplates((current) => [template, ...current.filter((item) => item.id !== template.id)].sort((first, second) => first.name.localeCompare(second.name)));
+      setNewTemplateName("");
+      setNewTemplateTags("");
+      setMessage("Response template saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to save response template.");
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function handleArchiveTemplate(templateId: string) {
+    const context = await getSessionContext();
+    if (!context) return;
+    setArchivingTemplateId(templateId);
+    setMessage(null);
+    try {
+      await updateResponseTemplate(context.organizationId, context.accessToken, templateId, { archived: true });
+      setTemplates((current) => current.filter((template) => template.id !== templateId));
+      setMessage("Response template archived.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to archive response template.");
+    } finally {
+      setArchivingTemplateId(null);
+    }
+  }
+
   async function handleCreateNote() {
     const context = await getSessionContext();
     if (!context || !noteText.trim()) return;
@@ -560,6 +618,8 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const replyVersionHistory = latestSuggestion ? [...(latestSuggestion.version_history ?? [])].sort((first, second) => second.version - first.version) : [];
   const sendReplySubject = ticket ? replySubject(ticket.subject) : "";
   const canSend = directSendEnabled && directSendReady && sendConfirmation === "SEND";
+  const templateTags = Array.from(new Set(templates.flatMap((template) => template.category_tags))).sort();
+  const visibleTemplates = templates.filter((template) => templateTagFilter === "all" || template.category_tags.includes(templateTagFilter));
 
   if (loading) return <p className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600">Loading ticket...</p>;
 
@@ -809,27 +869,57 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white p-5">
-              <h2 className="font-display text-lg font-semibold">Response templates</h2>
-              <div className="mt-3 flex gap-2">
-                <input value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="Search templates" className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-lg font-semibold">Response templates</h2>
+                  <p className="mt-1 text-sm text-slate-500">Insert approved wording or save the current reply as a reusable template.</p>
+                </div>
+                <span className="rounded-md bg-slate-50 px-2 py-1 font-mono text-xs text-slate-500">{templates.length} active</span>
+              </div>
+
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-medium text-slate-800">Save current reply as template</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <input value={newTemplateName} onChange={(event) => setNewTemplateName(event.target.value)} placeholder="Template name" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <input value={newTemplateTags} onChange={(event) => setNewTemplateTags(event.target.value)} placeholder="Tags, comma separated" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  <Button type="button" variant="outline" onClick={() => void handleCreateTemplate()} disabled={savingTemplate || !newTemplateName.trim() || !replyText.trim()}>{savingTemplate ? "Saving..." : "Save template"}</Button>
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                <input value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="Search templates" className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <select value={templateTagFilter} onChange={(event) => setTemplateTagFilter(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+                  <option value="all">All tags</option>
+                  {templateTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+                </select>
                 <Button type="button" variant="outline" onClick={() => void loadTemplates()}>Search</Button>
               </div>
-              <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
-                {templates.map((template) => (
+              <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                {visibleTemplates.map((template) => (
                   <div key={template.id} className="rounded-md border border-slate-200 p-3 text-sm">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-slate-800">{template.name}</p>
-                        <p className="mt-1 line-clamp-2 text-slate-500">{template.body}</p>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-slate-800">{template.name}</p>
+                          <span className="font-mono text-xs text-slate-400">v{template.version}</span>
+                        </div>
+                        {template.category_tags.length ? (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {template.category_tags.map((tag) => <span key={tag} className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{tag}</span>)}
+                          </div>
+                        ) : null}
+                        <p className="mt-2 line-clamp-3 text-slate-500">{template.body}</p>
                       </div>
-                      <Button type="button" variant="ghost" onClick={() => void handleInsertTemplate(template.id)}>Insert</Button>
+                      <div className="flex shrink-0 flex-col gap-2">
+                        <Button type="button" variant="ghost" onClick={() => void handleInsertTemplate(template.id)}>Insert</Button>
+                        <Button type="button" variant="ghost" onClick={() => void handleArchiveTemplate(template.id)} disabled={archivingTemplateId === template.id}>{archivingTemplateId === template.id ? "Archiving..." : "Archive"}</Button>
+                      </div>
                     </div>
                   </div>
                 ))}
-                {templates.length === 0 ? <p className="text-sm text-slate-500">No templates found.</p> : null}
+                {visibleTemplates.length === 0 ? <p className="text-sm text-slate-500">No templates found.</p> : null}
               </div>
             </div>
-
             <div className="rounded-lg border border-slate-200 bg-white p-5">
               <h2 className="font-display text-lg font-semibold">Internal notes</h2>
               <textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} rows={4} placeholder="Add a private note. Mention teammates by email with @name@example.com." className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm leading-6" />
@@ -878,4 +968,3 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     </section>
   );
 }
-
