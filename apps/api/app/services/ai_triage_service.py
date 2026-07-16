@@ -37,6 +37,59 @@ REVIEW_REQUIRED_CATEGORIES = {
     TicketCategory.COMPLAINT.value,
 }
 
+
+PRIORITY_RANK = {
+    TicketPriority.LOW.value: 0,
+    TicketPriority.MEDIUM.value: 1,
+    TicketPriority.HIGH.value: 2,
+    TicketPriority.CRITICAL.value: 3,
+}
+
+
+def _set_min_priority(output: TriageOutput, minimum: TicketPriority) -> bool:
+    if PRIORITY_RANK[output.priority.value] >= PRIORITY_RANK[minimum.value]:
+        return False
+    output.priority = minimum
+    return True
+
+
+def apply_triage_policy_guardrails(output: TriageOutput, subject: str, message: str) -> list[str]:
+    text = f"{subject} {message}".lower()
+    adjustments: list[str] = []
+    money_signal = any(term in text for term in ["refund", "double charged", "charged twice", "duplicate charge", "overcharge", "billing", "payment", "chargeback"])
+    access_signal = any(term in text for term in ["locked account", "account locked", "cannot log in", "can't log in", "cant log in", "unable to log in", "account access", "password reset"])
+    damage_signal = any(term in text for term in ["broken", "damaged", "defective", "not working", "missing part"])
+    legal_or_fraud_signal = any(term in text for term in ["fraud", "legal", "lawyer", "attorney", "lawsuit", "chargeback", "stolen", "unauthorized"])
+    urgent_signal = any(term in text for term in ["urgent", "immediately", "asap", "right now", "now"])
+
+    if money_signal and output.category == TicketCategory.OTHER:
+        output.category = TicketCategory.REFUND if "refund" in text else TicketCategory.BILLING
+        adjustments.append("category set from support-policy money signal")
+    if access_signal and output.category == TicketCategory.OTHER:
+        output.category = TicketCategory.ACCOUNT_ACCESS
+        adjustments.append("category set from support-policy account-access signal")
+    if damage_signal and output.category == TicketCategory.OTHER:
+        output.category = TicketCategory.DAMAGED_ITEM
+        adjustments.append("category set from support-policy damaged-item signal")
+
+    if money_signal and access_signal and urgent_signal:
+        if _set_min_priority(output, TicketPriority.CRITICAL):
+            adjustments.append("priority raised to critical for urgent money plus account-access risk")
+    elif legal_or_fraud_signal:
+        if _set_min_priority(output, TicketPriority.CRITICAL):
+            adjustments.append("priority raised to critical for legal/fraud signal")
+    elif money_signal or damage_signal:
+        if _set_min_priority(output, TicketPriority.HIGH):
+            adjustments.append("priority raised to high for money/damage signal")
+    elif access_signal:
+        if _set_min_priority(output, TicketPriority.HIGH if urgent_signal else TicketPriority.MEDIUM):
+            adjustments.append("priority raised for account-access signal")
+
+    if output.priority in {TicketPriority.CRITICAL, TicketPriority.HIGH} and not output.requires_human_review:
+        output.requires_human_review = True
+        adjustments.append("human review required for high/critical priority")
+    return adjustments
+
 REVIEW_KEYWORDS = {
     "refund",
     "replacement",
@@ -282,6 +335,9 @@ async def _execute_ticket_triage(
         timer = perf_counter()
         output, raw_output = await classify_ticket_with_gemini(prompt)
         latency_ms = int((perf_counter() - timer) * 1000)
+        previous_priority = ticket.priority
+        previous_category = ticket.category
+        policy_adjustments = apply_triage_policy_guardrails(output, ticket.subject, ticket.message_text)
         requires_human_review = enforce_human_review(output, ticket.subject, ticket.message_text)
 
         ticket.category = output.category.value
@@ -344,6 +400,11 @@ async def _execute_ticket_triage(
                 "prompt_version": PROMPT_VERSION,
                 "schema_version": SCHEMA_VERSION,
                 "latency_ms": latency_ms,
+                "policy_adjustments": policy_adjustments,
+                "previous_priority": previous_priority,
+                "previous_category": previous_category,
+                "new_priority": result.priority,
+                "new_category": result.category,
             }
 
         write_ticket_event(
@@ -362,6 +423,12 @@ async def _execute_ticket_triage(
                 "category": result.category,
                 "requires_human_review": result.requires_human_review,
                 "confidence_score": result.confidence_score,
+                "previous_priority": previous_priority,
+                "previous_category": previous_category,
+                "new_priority": result.priority,
+                "new_category": result.category,
+                "policy_adjustments": policy_adjustments,
+                "changed": previous_priority != result.priority or previous_category != result.category,
                 "knowledge_source_ids": [source["id"] for source in knowledge_references],
             },
         )

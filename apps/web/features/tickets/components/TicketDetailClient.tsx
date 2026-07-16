@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/Button";
-import { StatusBadge, UrgencyBadge } from "@/components/ui/Badges";
+import { UrgencyBadge } from "@/components/ui/Badges";
 import { getStoredOrganizationId, setStoredOrganizationId } from "@/features/organizations/components/OrganizationManager";
 import { createClient } from "@/lib/supabase/client";
 import { getMe } from "@/lib/api-client";
@@ -99,6 +99,42 @@ function triageStatusLabel(status?: string | null) {
   return status.replaceAll("_", " ");
 }
 
+function formatDue(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function slaExplanation(ticket: Ticket) {
+  const reviewDue = formatDue(ticket.first_review_due_at);
+  const resolutionDue = formatDue(ticket.resolution_due_at);
+  if (ticket.sla_status === "paused") return "Paused because the ticket is pending, resolved, or spam.";
+  if (ticket.sla_status === "breached") return reviewDue ? `First review was due ${reviewDue}.` : resolutionDue ? `Resolution was due ${resolutionDue}.` : "SLA target has passed.";
+  if (ticket.sla_status === "warning") return reviewDue ? `First review due soon: ${reviewDue}.` : resolutionDue ? `Resolution due soon: ${resolutionDue}.` : "SLA target is close.";
+  return reviewDue ? `First review due ${reviewDue}.` : resolutionDue ? `Resolution due ${resolutionDue}.` : "No SLA target set.";
+}
+
+function workflowStatus(ticket: Ticket, latestSuggestion?: ReplySuggestion) {
+  if (latestSuggestion?.status === "approved" && !latestSuggestion.gmail_draft_id) {
+    return { label: "Reply approved", detail: "Draft not created yet. Create a Gmail draft when ready." };
+  }
+  if (latestSuggestion?.status === "draft_created" || latestSuggestion?.gmail_draft_id || ticket.status === "draft_created") {
+    return { label: "Draft created", detail: latestSuggestion?.gmail_draft_id ? `Gmail draft ${latestSuggestion.gmail_draft_id}` : "Gmail draft created." };
+  }
+  return { label: displayStatus(ticket.status), detail: null as string | null };
+}
+
+function latestTriageChange(events: TicketEvent[]) {
+  const event = [...events].reverse().find((item) => item.event_type === "ticket.ai_triaged" && item.event_metadata?.changed === true);
+  if (!event) return null;
+  const previousPriority = String(event.event_metadata.previous_priority ?? "unknown").replaceAll("_", " ");
+  const newPriority = String(event.event_metadata.new_priority ?? "unknown").replaceAll("_", " ");
+  const previousCategory = String(event.event_metadata.previous_category ?? "unknown").replaceAll("_", " ");
+  const newCategory = String(event.event_metadata.new_category ?? "unknown").replaceAll("_", " ");
+  const adjustments = Array.isArray(event.event_metadata.policy_adjustments) ? event.event_metadata.policy_adjustments.join("; ") : null;
+  return { previousPriority, newPriority, previousCategory, newCategory, adjustments };
+}
 function triageFailureMessage(ticket: Ticket) {
   if (ticket.triage_status !== "triage_failed") return null;
   const error = ticket.triage_error_message ?? "AI triage did not complete.";
@@ -497,6 +533,9 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
 
   const latestTriage = triageResults[0];
   const latestSuggestion = replySuggestions[0];
+  const currentWorkflow = ticket ? workflowStatus(ticket, latestSuggestion) : null;
+  const currentSlaExplanation = ticket ? slaExplanation(ticket) : null;
+  const currentTriageChange = latestTriageChange(events);
   const triageFailedWithoutResult = ticket?.triage_status === "triage_failed" && !latestTriage;
   const displayedCategory = triageFailedWithoutResult ? "Not classified" : ticket?.category.replaceAll("_", " ");
   const displayedReview = triageFailedWithoutResult ? "Not available" : latestTriage?.requires_human_review ? "Required" : "Not flagged";
@@ -527,7 +566,17 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                   <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-slate-900">{ticket.subject}</h2>
                   <p className="mt-2 text-sm text-slate-500">From {ticket.customer.name ?? ticket.customer.email} - {new Date(ticket.received_at).toLocaleString()}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">{displayedUrgencyBadge}<StatusBadge status={ticket.status} /><span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium capitalize text-slate-600">SLA {ticket.sla_status.replaceAll("_", " ")}</span></div>
+                <div className="flex flex-wrap gap-2">
+                  {displayedUrgencyBadge}
+                  <span className="inline-flex flex-col rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium capitalize text-slate-600">
+                    <span>{currentWorkflow?.label}</span>
+                    {currentWorkflow?.detail ? <span className="mt-0.5 font-normal normal-case text-slate-500">{currentWorkflow.detail}</span> : null}
+                  </span>
+                  <span className="inline-flex max-w-64 flex-col rounded-md bg-slate-100 px-2 py-1 text-xs font-medium capitalize text-slate-600" title={currentSlaExplanation ?? undefined}>
+                    <span>SLA {ticket.sla_status.replaceAll("_", " ")}</span>
+                    {currentSlaExplanation ? <span className="mt-0.5 truncate font-normal normal-case text-slate-500">{currentSlaExplanation}</span> : null}
+                  </span>
+                </div>
               </div>
             </div>
             <div className="max-h-[calc(100vh-280px)] overflow-y-auto p-5">
@@ -604,6 +653,15 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                 <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                   AI triage did not complete. The default urgency/category values are hidden because they are not an AI classification.
                   {ticket.triage_error_message ? <span className="mt-2 block">Reason: {ticket.triage_error_message}</span> : null}
+                </div>
+              ) : null}
+              {currentTriageChange ? (
+                <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+                  <p className="font-medium">Regenerated triage changed classification</p>
+                  <p className="mt-1 text-xs leading-5">
+                    Urgency changed from {currentTriageChange.previousPriority} to {currentTriageChange.newPriority}; category changed from {currentTriageChange.previousCategory} to {currentTriageChange.newCategory}.
+                  </p>
+                  {currentTriageChange.adjustments ? <p className="mt-1 text-xs leading-5">Guardrails: {currentTriageChange.adjustments}</p> : null}
                 </div>
               ) : null}
               {latestTriage ? (

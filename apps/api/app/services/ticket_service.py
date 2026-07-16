@@ -6,6 +6,7 @@ from app.api.deps import AuthenticatedUser
 from app.models.customer import Customer
 from app.models.gmail_connection import GmailConnection
 from app.models.member import MemberStatus, OrganizationMember
+from app.models.reply_suggestion import ReplySuggestion
 from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketStatus
 from app.models.ticket_event import TicketEvent
 from app.schemas.ticket import TicketAssign, TicketCreate, TicketListItem, TicketUpdate
@@ -14,6 +15,30 @@ from app.services.routing_rule_service import apply_routing_rules
 from app.services.sla_service import initialize_ticket_sla, refresh_ticket_sla_status
 from app.services.workspace_settings_service import get_or_create_workspace_settings
 from app.services.ticket_lifecycle_service import transition_ticket_status
+
+
+
+def _latest_reply_suggestions_by_ticket(db: Session, organization_id: str, ticket_ids: set[str]) -> dict[str, ReplySuggestion]:
+    if not ticket_ids:
+        return {}
+    suggestions = list(
+        db.scalars(
+            select(ReplySuggestion)
+            .where(ReplySuggestion.organization_id == organization_id, ReplySuggestion.ticket_id.in_(ticket_ids))
+            .order_by(ReplySuggestion.ticket_id.asc(), ReplySuggestion.created_at.desc())
+        )
+    )
+    latest: dict[str, ReplySuggestion] = {}
+    for suggestion in suggestions:
+        latest.setdefault(suggestion.ticket_id, suggestion)
+    return latest
+
+
+def _attach_latest_reply_state(db: Session, organization_id: str, ticket: Ticket) -> Ticket:
+    latest = _latest_reply_suggestions_by_ticket(db, organization_id, {ticket.id}).get(ticket.id)
+    setattr(ticket, "latest_reply_status", latest.status if latest is not None else None)
+    setattr(ticket, "latest_reply_gmail_draft_id", latest.gmail_draft_id if latest is not None else None)
+    return ticket
 
 
 def write_ticket_event(
@@ -140,6 +165,7 @@ def list_tickets(
         )
 
     tickets = db.scalars(statement.limit(limit).offset(offset)).all()
+    latest_reply_by_ticket = _latest_reply_suggestions_by_ticket(db, organization_id, {ticket.id for ticket in tickets})
     connection_ids = {ticket.gmail_connection_id for ticket in tickets if ticket.gmail_connection_id}
     connections = {}
     if connection_ids:
@@ -175,6 +201,8 @@ def list_tickets(
             first_review_due_at=ticket.first_review_due_at,
             resolution_due_at=ticket.resolution_due_at,
             sla_status=refresh_ticket_sla_status(ticket),
+            latest_reply_status=latest_reply_by_ticket[ticket.id].status if ticket.id in latest_reply_by_ticket else None,
+            latest_reply_gmail_draft_id=latest_reply_by_ticket[ticket.id].gmail_draft_id if ticket.id in latest_reply_by_ticket else None,
             received_at=ticket.received_at,
             updated_at=ticket.updated_at,
         )
@@ -196,7 +224,7 @@ def get_ticket_or_404(
     )
     if ticket is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
-    return ticket
+    return _attach_latest_reply_state(db, organization_id, ticket)
 
 
 def update_ticket(

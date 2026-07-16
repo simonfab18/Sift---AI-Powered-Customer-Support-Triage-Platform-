@@ -6,6 +6,7 @@ from app.integrations.gemini.client import GeminiQuotaExceededError
 from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketSentiment, TicketTriageStatus
 from app.integrations.gemini.prompts import build_triage_prompt
 from app.schemas.ai import TriageOutput
+from app.services.ai_triage_service import apply_triage_policy_guardrails
 
 
 @pytest.fixture
@@ -216,3 +217,28 @@ def test_triage_prompt_contains_common_gmail_workflow_examples() -> None:
     assert "category account_access" in prompt
     assert "Where is my order?" in prompt
     assert "The item arrived broken" in prompt
+
+
+def test_triage_policy_guardrails_stabilize_urgent_refund_and_account_access() -> None:
+    output = TriageOutput(
+        category=TicketCategory.OTHER,
+        priority=TicketPriority.MEDIUM,
+        sentiment=TicketSentiment.NEGATIVE,
+        summary="Customer needs help.",
+        suggested_action="Review the case.",
+        draft_reply="Thanks for contacting us.",
+        confidence_score=76,
+        reasoning="Initial model output was generic.",
+        requires_human_review=False,
+    )
+
+    adjustments = apply_triage_policy_guardrails(
+        output,
+        subject="Urgent refund request - double charged and account locked",
+        message="I was double charged and now my account is locked. Please help right now.",
+    )
+
+    assert output.category == TicketCategory.REFUND
+    assert output.priority == TicketPriority.CRITICAL
+    assert output.requires_human_review is True
+    assert "priority raised to critical for urgent money plus account-access risk" in adjustments

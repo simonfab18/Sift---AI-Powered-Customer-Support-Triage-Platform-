@@ -98,6 +98,8 @@ class TicketRead(BaseModel):
     first_review_due_at: datetime | None = None
     resolution_due_at: datetime | None = None
     sla_status: str
+    latest_reply_status: str | None = None
+    latest_reply_gmail_draft_id: str | None = None
     created_at: datetime
     updated_at: datetime
     attachments: list[TicketAttachmentRead] = []
@@ -125,6 +127,8 @@ class TicketListItem(BaseModel):
     first_review_due_at: datetime | None = None
     resolution_due_at: datetime | None = None
     sla_status: str
+    latest_reply_status: str | None = None
+    latest_reply_gmail_draft_id: str | None = None
     received_at: datetime
     updated_at: datetime
 

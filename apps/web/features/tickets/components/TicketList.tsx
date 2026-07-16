@@ -29,8 +29,42 @@ function SourceInboxBadge({ ticket }: { ticket: TicketListItem }) {
   );
 }
 
-function SlaBadge({ status }: { status: string }) {
-  return <span className={`rounded-md px-2 py-1 text-xs font-medium capitalize ${slaTone[status] ?? "bg-slate-100 text-slate-600"}`}>{status.replaceAll("_", " ")}</span>;
+function formatDue(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function slaDetail(ticket: TicketListItem) {
+  const reviewDue = formatDue(ticket.first_review_due_at);
+  const resolutionDue = formatDue(ticket.resolution_due_at);
+  if (ticket.sla_status === "paused") return "Paused because the ticket is pending, resolved, or spam.";
+  if (ticket.sla_status === "breached") return reviewDue ? `First review was due ${reviewDue}.` : resolutionDue ? `Resolution was due ${resolutionDue}.` : "SLA target has passed.";
+  if (ticket.sla_status === "warning") return reviewDue ? `First review due soon: ${reviewDue}.` : resolutionDue ? `Resolution due soon: ${resolutionDue}.` : "SLA target is close.";
+  return reviewDue ? `First review due ${reviewDue}.` : resolutionDue ? `Resolution due ${resolutionDue}.` : "No SLA target set.";
+}
+
+function SlaBadge({ ticket }: { ticket: TicketListItem }) {
+  const status = ticket.sla_status ?? "on_track";
+  return (
+    <span className={`inline-flex max-w-44 flex-col rounded-md px-2 py-1 text-xs font-medium capitalize ${slaTone[status] ?? "bg-slate-100 text-slate-600"}`} title={slaDetail(ticket)}>
+      <span>{status.replaceAll("_", " ")}</span>
+      <span className="mt-0.5 truncate font-normal normal-case opacity-80">{slaDetail(ticket)}</span>
+    </span>
+  );
+}
+
+function TicketWorkflowStatusBadge({ ticket }: { ticket: TicketListItem }) {
+  if (ticket.latest_reply_status === "approved" && !ticket.latest_reply_gmail_draft_id) {
+    return (
+      <span className="inline-flex flex-col rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800" title="Reply is approved. Create a Gmail draft when ready.">
+        <span>Reply approved</span>
+        <span className="mt-0.5 font-normal">Draft not created</span>
+      </span>
+    );
+  }
+  return <TicketStatusBadge status={ticket.status} />;
 }
 
 function triageState(ticket: TicketListItem) {
@@ -136,9 +170,9 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
                 <td className="px-4 py-3"><SourceInboxBadge ticket={ticket} /></td>
                 <td className="px-4 py-3"><TicketClassification ticket={ticket} type="priority" /></td>
                 <td className="px-4 py-3 text-slate-600"><TicketClassification ticket={ticket} type="category" /></td>
-                <td className="px-4 py-3"><TicketStatusBadge status={ticket.status} /></td>
+                <td className="px-4 py-3"><TicketWorkflowStatusBadge ticket={ticket} /></td>
                 <td className="px-4 py-3"><TriageStateBadge ticket={ticket} /></td>
-                <td className="px-4 py-3"><SlaBadge status={ticket.sla_status ?? "on_track"} /></td>
+                <td className="px-4 py-3"><SlaBadge ticket={ticket} /></td>
                 <td className="px-4 py-3 font-mono text-xs text-slate-500">{new Date(ticket.received_at).toLocaleString()}</td>
               </tr>
             ))}
@@ -168,8 +202,8 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <TicketClassification ticket={ticket} type="priority" />
-                <TicketStatusBadge status={ticket.status} />
-                <SlaBadge status={ticket.sla_status ?? "on_track"} />
+                <TicketWorkflowStatusBadge ticket={ticket} />
+                <SlaBadge ticket={ticket} />
                 <TriageStateBadge ticket={ticket} />
               </div>
               {ticket.first_review_due_at ? <p className="mt-2 text-xs text-slate-500">Review due {new Date(ticket.first_review_due_at).toLocaleString()}</p> : null}

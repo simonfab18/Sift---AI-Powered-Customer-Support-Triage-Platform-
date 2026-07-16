@@ -20,6 +20,8 @@ export type TicketListItem = {
   first_review_due_at: string | null;
   resolution_due_at: string | null;
   sla_status: string;
+  latest_reply_status: string | null;
+  latest_reply_gmail_draft_id: string | null;
   received_at: string;
   updated_at: string;
 };

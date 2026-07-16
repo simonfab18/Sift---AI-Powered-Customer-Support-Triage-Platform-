@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.encryption import encrypt_secret
 from app.models.ai_triage_result import AITriageResult
 from app.models.gmail_connection import GmailConnection
@@ -81,6 +82,13 @@ def test_agent_can_edit_and_approve_reply_suggestion(client: TestClient, create_
     assert approve_response.json()["status"] == "approved"
     assert approve_response.json()["approved_by_user_id"] == "user-owner"
 
+    tickets_response = client.get(f"/v1/orgs/{organization['id']}/tickets")
+    listed_ticket = next(item for item in tickets_response.json() if item["id"] == ticket.id)
+    assert listed_ticket["latest_reply_status"] == "approved"
+    assert listed_ticket["latest_reply_gmail_draft_id"] is None
+
+    ticket_response = client.get(f"/v1/orgs/{organization['id']}/tickets/{ticket.id}")
+    assert ticket_response.json()["latest_reply_status"] == "approved"
     events_response = client.get(f"/v1/orgs/{organization['id']}/tickets/{ticket.id}/events")
     assert "ticket.reply_suggestion_approved" in [event["event_type"] for event in events_response.json()]
 
@@ -142,6 +150,7 @@ def _create_reply_suggestion(client: TestClient, create_org, with_gmail: bool = 
         ticket = db.scalar(select(Ticket).where(Ticket.id == ticket_id))
         gmail_connection_id = None
         if with_gmail:
+            settings.encryption_key = "test-encryption-key"
             connection = GmailConnection(
                 organization_id=organization["id"],
                 connected_by_user_id="user-owner",
