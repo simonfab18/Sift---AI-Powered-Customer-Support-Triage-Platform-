@@ -224,6 +224,7 @@ def get_ticket_or_404(
     )
     if ticket is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+    refresh_ticket_sla_status(ticket)
     return _attach_latest_reply_state(db, organization_id, ticket)
 
 

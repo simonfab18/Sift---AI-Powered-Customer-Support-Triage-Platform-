@@ -133,6 +133,30 @@ def test_approved_reply_suggestion_can_create_draft(client: TestClient, create_o
     assert ticket_response.json()["status"] == "draft_created"
 
 
+
+def test_resolved_ticket_detail_keeps_terminal_status_after_draft_created(client: TestClient, create_org, monkeypatch) -> None:
+    organization, ticket, suggestion = _create_reply_suggestion(client, create_org, with_gmail=True)
+    monkeypatch.setattr(
+        "app.services.reply_suggestion_service.refresh_gmail_access_token",
+        fake_refresh_gmail_access_token,
+    )
+    monkeypatch.setattr("app.services.reply_suggestion_service.create_gmail_draft", fake_create_gmail_draft)
+
+    client.post(f"/v1/orgs/{organization['id']}/reply-suggestions/{suggestion.id}/approve")
+    draft_response = client.post(f"/v1/orgs/{organization['id']}/reply-suggestions/{suggestion.id}/create-gmail-draft")
+    assert draft_response.status_code == 201
+
+    resolve_response = client.post(f"/v1/orgs/{organization['id']}/tickets/{ticket.id}/resolve")
+    detail_response = client.get(f"/v1/orgs/{organization['id']}/tickets/{ticket.id}")
+
+    assert resolve_response.status_code == 200
+    assert resolve_response.json()["status"] == "resolved"
+    assert resolve_response.json()["sla_status"] == "paused"
+    assert detail_response.json()["status"] == "resolved"
+    assert detail_response.json()["sla_status"] == "paused"
+    assert detail_response.json()["latest_reply_status"] == "draft_created"
+    assert detail_response.json()["latest_reply_gmail_draft_id"] == "draft-123"
+
 def _create_reply_suggestion(client: TestClient, create_org, with_gmail: bool = False):
     organization = create_org()
     ticket_response = client.post(

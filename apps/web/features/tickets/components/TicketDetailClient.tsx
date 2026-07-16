@@ -116,6 +116,12 @@ function slaExplanation(ticket: Ticket) {
 }
 
 function workflowStatus(ticket: Ticket, latestSuggestion?: ReplySuggestion) {
+  if (ticket.status === "resolved") {
+    return { label: "Resolved", detail: latestSuggestion?.gmail_draft_id ? `Gmail draft exists: ${latestSuggestion.gmail_draft_id}` : null };
+  }
+  if (ticket.status === "spam") {
+    return { label: "Spam", detail: latestSuggestion?.gmail_draft_id ? `Gmail draft exists: ${latestSuggestion.gmail_draft_id}` : null };
+  }
   if (latestSuggestion?.status === "approved" && !latestSuggestion.gmail_draft_id) {
     return { label: "Reply approved", detail: "Draft not created yet. Create a Gmail draft when ready." };
   }
