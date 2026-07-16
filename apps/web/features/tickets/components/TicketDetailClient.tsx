@@ -190,6 +190,75 @@ function latestTriageChange(events: TicketEvent[]) {
   return { previousPriority, newPriority, previousCategory, newCategory, adjustments };
 }
 
+const eventLabels: Record<string, string> = {
+  "ticket.created": "Ticket created",
+  "ticket.imported_from_gmail": "Imported from Gmail",
+  "ticket.updated": "Ticket updated",
+  "ticket.assigned": "Assignment changed",
+  "ticket.ai_triaged": "AI triage completed",
+  "ticket.ai_triage_failed": "AI triage failed",
+  "ticket.reply_suggestion_created": "Reply suggestion created",
+  "ticket.reply_suggestion_edited": "Reply suggestion edited",
+  "ticket.reply_suggestion_approved": "Reply approved",
+  "ticket.reply_suggestion_rejected": "Reply rejected",
+  "ticket.reply_approval_edited": "Approval edited",
+  "ticket.reply_approval_approved": "Approval approved",
+  "ticket.reply_draft_created": "Gmail draft created",
+  "ticket.reply_sent": "Reply sent",
+  "ticket.internal_note_created": "Internal note added",
+  "ticket.internal_note_edited": "Internal note edited",
+  "ticket.internal_note_deleted": "Internal note deleted",
+  "ticket.resolved": "Ticket resolved",
+  "ticket.marked_spam": "Marked as spam",
+  "ticket.bulk_action_item_succeeded": "Bulk action applied",
+};
+
+function eventLabel(eventType: string) {
+  return eventLabels[eventType] ?? eventType.replace("ticket.", "").replaceAll("_", " ");
+}
+
+function eventTone(eventType: string) {
+  if (eventType.includes("failed") || eventType.includes("rejected") || eventType.includes("spam")) return "border-amber-200 bg-amber-50 text-amber-800";
+  if (eventType.includes("resolved") || eventType.includes("approved") || eventType.includes("draft_created") || eventType.includes("sent")) return "border-teal-200 bg-teal-50 text-teal-800";
+  if (eventType.includes("ai") || eventType.includes("routing")) return "border-sky-200 bg-sky-50 text-sky-800";
+  return "border-slate-200 bg-white text-slate-700";
+}
+
+function formatMetadataValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "none";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (Array.isArray(value)) return value.map(formatMetadataValue).join(", ");
+  if (typeof value === "object") return Object.entries(value as Record<string, unknown>).map(([key, item]) => `${key.replaceAll("_", " ")}: ${formatMetadataValue(item)}`).join(", ");
+  return String(value).replaceAll("_", " ");
+}
+
+function eventDetail(event: TicketEvent) {
+  const metadata = event.event_metadata ?? {};
+  if (metadata.changes && typeof metadata.changes === "object") {
+    const changes = Object.entries(metadata.changes as Record<string, unknown>);
+    if (changes.length) return `Changed ${changes.map(([key, value]) => `${key.replaceAll("_", " ")} to ${formatMetadataValue(value)}`).join("; ")}.`;
+  }
+  if ("from" in metadata || "to" in metadata) return `From ${formatMetadataValue(metadata.from)} to ${formatMetadataValue(metadata.to)}.`;
+  if ("previous_status" in metadata) return `Previous status: ${formatMetadataValue(metadata.previous_status)}.`;
+  if ("source" in metadata) return `Source: ${formatMetadataValue(metadata.source)}.`;
+  if ("error" in metadata) return `Reason: ${formatMetadataValue(metadata.error)}.`;
+  if ("reason" in metadata) return `Reason: ${formatMetadataValue(metadata.reason)}.`;
+  if ("gmail_draft_id" in metadata) return `Gmail draft: ${formatMetadataValue(metadata.gmail_draft_id)}.`;
+  if ("gmail_message_id" in metadata) return `Gmail message: ${formatMetadataValue(metadata.gmail_message_id)}.`;
+  if ("changed" in metadata && metadata.changed === true) {
+    return `Classification changed from ${formatMetadataValue(metadata.previous_priority)} / ${formatMetadataValue(metadata.previous_category)} to ${formatMetadataValue(metadata.new_priority)} / ${formatMetadataValue(metadata.new_category)}.`;
+  }
+  const compact = Object.entries(metadata)
+    .filter(([key]) => !key.endsWith("_id") && key !== "ticket_id")
+    .slice(0, 3)
+    .map(([key, value]) => `${key.replaceAll("_", " ")}: ${formatMetadataValue(value)}`);
+  return compact.length ? compact.join(" / ") : "No extra details recorded.";
+}
+
+function customerSource(ticket: Ticket) {
+  if (ticket.gmail_connection_email) return ticket.gmail_connection_display_name || ticket.gmail_connection_email;
+  return "Manual ticket";
+}
 function parseTemplateTags(value: string) {
   return value
     .split(",")
@@ -735,15 +804,42 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                   <p className="mt-3 text-xs text-slate-500">Files stay private. Stored attachments open through short-lived signed URLs after policy and workspace checks.</p>
                 </div>
               ) : null}
-              <div className="mt-6">
-                <h3 className="font-display text-lg font-semibold">Timeline</h3>
-                <div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-200">
-                  {events.map((event) => (
-                    <div key={event.id} className="grid gap-2 p-3 text-sm sm:grid-cols-[1fr_auto]">
-                      <span className="font-medium text-slate-700">{event.event_type.replaceAll("_", " ")}</span>
-                      <span className="font-mono text-xs text-slate-500">{new Date(event.created_at).toLocaleString()}</span>
+              <div className="mt-6 space-y-4">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-mono text-xs uppercase tracking-wide text-slate-500">Customer context</p>
+                      <h3 className="mt-1 font-display text-lg font-semibold text-slate-900">{ticket.customer.name ?? ticket.customer.email}</h3>
+                      <p className="mt-1 break-all text-sm text-slate-600">{ticket.customer.email}</p>
                     </div>
-                  ))}
+                    <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600">{events.length} timeline events</span>
+                  </div>
+                  <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                    <div><dt className="text-slate-500">Source</dt><dd className="mt-1 font-medium text-slate-800">{customerSource(ticket)}</dd></div>
+                    <div><dt className="text-slate-500">Received</dt><dd className="mt-1 font-medium text-slate-800">{new Date(ticket.received_at).toLocaleString()}</dd></div>
+                    <div><dt className="text-slate-500">Thread</dt><dd className="mt-1 break-all font-mono text-xs text-slate-700">{ticket.gmail_thread_id ?? ticket.id}</dd></div>
+                  </dl>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-display text-lg font-semibold">Customer timeline</h3>
+                    <span className="text-xs text-slate-500">Oldest to newest</span>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {events.length === 0 ? <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">No timeline events recorded yet.</p> : null}
+                    {events.map((event) => (
+                      <div key={event.id} className={`rounded-lg border p-3 text-sm ${eventTone(event.event_type)}`}>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="font-medium">{eventLabel(event.event_type)}</p>
+                            <p className="mt-1 text-xs leading-5 opacity-80">{eventDetail(event)}</p>
+                          </div>
+                          <span className="shrink-0 font-mono text-xs opacity-70">{new Date(event.created_at).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
