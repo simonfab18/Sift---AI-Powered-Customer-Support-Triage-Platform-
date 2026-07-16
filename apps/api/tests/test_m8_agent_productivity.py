@@ -53,6 +53,47 @@ def test_saved_views_are_user_scoped_and_invalid_filters_are_dropped(client, cre
     assert scoped_response.json() == []
 
 
+
+def test_saved_view_update_replaces_preserved_inbox_filters(client, create_org) -> None:
+    organization = create_org()
+    created = client.post(
+        f"/v1/orgs/{organization['id']}/saved-views",
+        json={
+            "name": "Inbox watch",
+            "filters": {
+                "priority": "critical",
+                "gmail_connection_id": "gmail-1",
+                "gmail_inbox_type": "individual",
+                "sla_status": "warning",
+            },
+        },
+    )
+    assert created.status_code == 201
+
+    updated = client.patch(
+        f"/v1/orgs/{organization['id']}/saved-views/{created.json()['id']}",
+        json={
+            "name": "Shared queue watch",
+            "filters": {
+                "status": "pending",
+                "gmail_connection_id": "gmail-2",
+                "gmail_inbox_type": "google_group",
+                "sla_status": "breached",
+                "unknown": "dropped",
+            },
+        },
+    )
+
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["name"] == "Shared queue watch"
+    assert body["filters"] == {
+        "status": "pending",
+        "gmail_connection_id": "gmail-2",
+        "gmail_inbox_type": "google_group",
+        "sla_status": "breached",
+    }
+
 def test_bulk_actions_return_per_item_results_and_require_destructive_confirmation(client, create_org) -> None:
     organization = create_org()
     ticket = create_ticket(client, organization["id"])

@@ -17,6 +17,7 @@ import {
   getSavedViews,
   getTickets,
   runBulkTicketAction,
+  updateSavedView,
 } from "../api";
 import type { MetricsOverview, SavedView, TicketListItem } from "../types";
 import { TicketList } from "./TicketList";
@@ -46,6 +47,8 @@ export function TicketDashboard() {
   const [bulkAssignee, setBulkAssignee] = useState("");
   const [viewName, setViewName] = useState("");
   const [savingView, setSavingView] = useState(false);
+  const [updatingView, setUpdatingView] = useState(false);
+  const [activeSavedViewId, setActiveSavedViewId] = useState<string | null>(null);
   const [runningBulk, setRunningBulk] = useState(false);
   const [pendingBulkConfirm, setPendingBulkConfirm] = useState<{ action: string; ticketIds: string[] } | null>(null);
 
@@ -119,6 +122,39 @@ export function TicketDashboard() {
       });
   }, [tickets, query, urgency, statusFilter, slaFilter, inboxFilter, sourceTypeFilter, sort]);
 
+  function currentSavedViewFilters() {
+    const filters: Record<string, string> = {};
+    if (urgency !== "all") filters.priority = urgency;
+    if (statusFilter !== "all") filters.status = statusFilter;
+    if (slaFilter !== "all") filters.sla_status = slaFilter;
+    if (inboxFilter !== "all") filters.gmail_connection_id = inboxFilter;
+    if (sourceTypeFilter !== "all") filters.gmail_inbox_type = sourceTypeFilter;
+    return filters;
+  }
+
+  function normalizeFilters(filters: Record<string, string>) {
+    return JSON.stringify(Object.keys(filters).sort().reduce<Record<string, string>>((result, key) => {
+      result[key] = filters[key];
+      return result;
+    }, {}));
+  }
+
+  function savedViewSummary(view: SavedView) {
+    const labels: string[] = [];
+    if (view.filters.priority) labels.push(view.filters.priority.replaceAll("_", " "));
+    if (view.filters.status) labels.push(view.filters.status.replaceAll("_", " "));
+    if (view.filters.sla_status) labels.push(`SLA ${view.filters.sla_status.replaceAll("_", " ")}`);
+    if (view.filters.gmail_connection_id) {
+      const connection = gmailConnections.find((item) => item.id === view.filters.gmail_connection_id);
+      labels.push(connection?.display_name || connection?.gmail_email || "Saved inbox");
+    }
+    if (view.filters.gmail_inbox_type) labels.push(view.filters.gmail_inbox_type.replaceAll("_", " "));
+    return labels.length ? labels.join(" / ") : "All active tickets";
+  }
+
+  const activeSavedView = savedViews.find((view) => view.id === activeSavedViewId) ?? null;
+  const activeSavedViewChanged = activeSavedView ? normalizeFilters(activeSavedView.filters) !== normalizeFilters(currentSavedViewFilters()) : false;
+
   function toggleSelection(ticketId: string) {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -135,6 +171,7 @@ export function TicketDashboard() {
     setInboxFilter(view.filters.gmail_connection_id ?? "all");
     setSourceTypeFilter(view.filters.gmail_inbox_type ?? "all");
     setQuery("");
+    setActiveSavedViewId(view.id);
     setMessage(`Applied ${view.name}.`);
   }
 
@@ -148,15 +185,10 @@ export function TicketDashboard() {
     setSavingView(true);
     setMessage(null);
     try {
-      const filters: Record<string, string> = {};
-      if (urgency !== "all") filters.priority = urgency;
-      if (statusFilter !== "all") filters.status = statusFilter;
-      if (slaFilter !== "all") filters.sla_status = slaFilter;
-      if (inboxFilter !== "all") filters.gmail_connection_id = inboxFilter;
-      if (sourceTypeFilter !== "all") filters.gmail_inbox_type = sourceTypeFilter;
-      await createSavedView(context.organizationId, context.accessToken, viewName.trim(), filters);
+      const created = await createSavedView(context.organizationId, context.accessToken, viewName.trim(), currentSavedViewFilters());
       setViewName("");
-      await loadTickets();
+      setSavedViews((views) => [...views.filter((view) => view.id !== created.id), created].sort((left, right) => left.name.localeCompare(right.name)));
+      setActiveSavedViewId(created.id);
       setMessage("Saved view created.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to save view.");
@@ -165,12 +197,28 @@ export function TicketDashboard() {
     }
   }
 
+  async function handleUpdateActiveView() {
+    const context = await getContext();
+    if (!context || !activeSavedView) return;
+    setUpdatingView(true);
+    setMessage(null);
+    try {
+      const updated = await updateSavedView(context.organizationId, context.accessToken, activeSavedView.id, { filters: currentSavedViewFilters() });
+      setSavedViews((views) => views.map((view) => (view.id === updated.id ? updated : view)));
+      setMessage(`Updated ${updated.name}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to update saved view.");
+    } finally {
+      setUpdatingView(false);
+    }
+  }
   async function handleDeleteView(viewId: string) {
     const context = await getContext();
     if (!context) return;
     try {
       await deleteSavedView(context.organizationId, context.accessToken, viewId);
       setSavedViews((views) => views.filter((view) => view.id !== viewId));
+      if (activeSavedViewId === viewId) setActiveSavedViewId(null);
       setMessage("Saved view deleted.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to delete view.");
@@ -289,18 +337,30 @@ export function TicketDashboard() {
           </select>
         </div>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
-          <div className="flex flex-wrap gap-2">
-            {savedViews.map((view) => (
-              <span key={view.id} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">
-                <button type="button" onClick={() => applySavedView(view)} className="font-medium text-slate-700">{view.name}</button>
-                <button type="button" onClick={() => void handleDeleteView(view.id)} className="text-slate-400 hover:text-rose-600">x</button>
-              </span>
-            ))}
+        <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_auto] xl:items-start">
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {savedViews.length ? savedViews.map((view) => {
+                const active = view.id === activeSavedViewId;
+                return (
+                  <span key={view.id} className={`inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs ${active ? "border-teal-300 bg-teal-50 text-teal-800" : "border-slate-200 bg-slate-50 text-slate-600"}`} title={savedViewSummary(view)}>
+                    <button type="button" onClick={() => applySavedView(view)} className="text-left font-medium">{view.name}</button>
+                    {active ? <span className="rounded bg-white/70 px-1 font-medium">Active</span> : null}
+                    <button type="button" onClick={() => void handleDeleteView(view.id)} className="text-slate-400 hover:text-rose-600" aria-label={`Delete ${view.name}`}>x</button>
+                  </span>
+                );
+              }) : <p className="text-xs text-slate-500">No saved views yet.</p>}
+            </div>
+            {activeSavedView ? (
+              <p className="text-xs text-slate-500">
+                Current view: <span className="font-medium text-slate-700">{activeSavedView.name}</span> / {savedViewSummary(activeSavedView)}{activeSavedViewChanged ? " / filters changed" : ""}
+              </p>
+            ) : null}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input value={viewName} onChange={(event) => setViewName(event.target.value)} placeholder="View name" className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm" />
             <Button type="button" variant="outline" onClick={() => void handleSaveView()} disabled={savingView}>{savingView ? "Saving..." : "Save view"}</Button>
+            <Button type="button" variant="outline" onClick={() => void handleUpdateActiveView()} disabled={!activeSavedView || !activeSavedViewChanged || updatingView}>{updatingView ? "Updating..." : "Update current"}</Button>
           </div>
         </div>
       </div>

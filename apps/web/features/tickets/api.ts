@@ -228,6 +228,17 @@ export async function createSavedView(
   });
 }
 
+export async function updateSavedView(
+  organizationId: string,
+  accessToken: string,
+  viewId: string,
+  payload: { name?: string; filters?: Record<string, string> },
+): Promise<SavedView> {
+  return ticketApiFetch<SavedView>(`/v1/orgs/${organizationId}/saved-views/${viewId}`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
 export async function deleteSavedView(organizationId: string, accessToken: string, viewId: string): Promise<void> {
   return ticketApiFetch<void>(`/v1/orgs/${organizationId}/saved-views/${viewId}`, accessToken, { method: "DELETE" });
 }
