@@ -106,6 +106,12 @@ function formatDue(value?: string | null) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
+function formatReplyVersionTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown time";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
 function slaExplanation(ticket: Ticket) {
   const reviewDue = formatDue(ticket.first_review_due_at);
   const resolutionDue = formatDue(ticket.resolution_due_at);
@@ -551,6 +557,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const canDraft = latestSuggestion?.status === "approved" && !latestSuggestion.gmail_draft_id;
   const directSendReady = latestSuggestion?.status === "approved" || latestSuggestion?.status === "draft_created";
   const sendReplyBody = latestSuggestion ? latestSuggestion.edited_body ?? latestSuggestion.body : "";
+  const replyVersionHistory = latestSuggestion ? [...(latestSuggestion.version_history ?? [])].sort((first, second) => second.version - first.version) : [];
   const sendReplySubject = ticket ? replySubject(ticket.subject) : "";
   const canSend = directSendEnabled && directSendReady && sendConfirmation === "SEND";
 
@@ -733,6 +740,36 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                       <p className="mt-1 text-xs leading-5">Create a Gmail draft when you are ready. The draft will stay in Gmail for final review.</p>
                     </div>
                   ) : null}
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-medium text-slate-800">Reply version history</p>
+                      <span className="font-mono text-xs text-slate-500">{replyVersionHistory.length || 1} version{(replyVersionHistory.length || 1) === 1 ? "" : "s"}</span>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {replyVersionHistory.length ? replyVersionHistory.map((version) => (
+                        <div key={version.id} className="rounded-md border border-slate-200 bg-white p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono font-medium text-slate-700">v{version.version}</span>
+                              <span className="capitalize text-slate-500">{displayStatus(version.status)}</span>
+                              {version.version === latestSuggestion.reply_version ? <span className="rounded bg-teal-50 px-2 py-0.5 font-medium text-teal-700">Current</span> : null}
+                              {version.version === latestSuggestion.approved_reply_version ? <span className="rounded bg-sky-50 px-2 py-0.5 font-medium text-sky-700">Approved</span> : null}
+                            </div>
+                            <span className="text-slate-500">{formatReplyVersionTime(version.created_at)}</span>
+                          </div>
+                          <p className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-slate-700">{version.body}</p>
+                        </div>
+                      )) : (
+                        <div className="rounded-md border border-slate-200 bg-white p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="font-mono font-medium text-slate-700">v{latestSuggestion.reply_version}</span>
+                            <span className="capitalize text-slate-500">{displayStatus(latestSuggestion.status)}</span>
+                          </div>
+                          <p className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-slate-700">{sendReplyBody}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   <textarea
                     value={replyText}
                     onChange={(event) => setReplyText(event.target.value)}

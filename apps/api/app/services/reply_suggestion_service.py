@@ -4,7 +4,7 @@ from email.message import EmailMessage
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import AuthenticatedUser
 from app.core.config import settings
@@ -17,6 +17,7 @@ from app.models.reply_suggestion import (
     ReplySuggestion,
     ReplySuggestionCreatedBy,
     ReplySuggestionStatus,
+    ReplySuggestionVersion,
 )
 from app.models.ticket import TicketStatus
 from app.schemas.reply_approval import GmailDirectSendRequest
@@ -37,6 +38,46 @@ def _expected_reply_subject(subject: str) -> str:
 def _normalize_confirmation_text(value: str) -> str:
     return "\n".join(line.rstrip() for line in value.strip().splitlines())
 
+def _current_reply_body(suggestion: ReplySuggestion) -> str:
+    return suggestion.edited_body or suggestion.body
+
+
+def _record_reply_version(db: Session, suggestion: ReplySuggestion, *, actor_id: str | None, status_value: str | None = None) -> None:
+    db.add(
+        ReplySuggestionVersion(
+            organization_id=suggestion.organization_id,
+            ticket_id=suggestion.ticket_id,
+            reply_suggestion_id=suggestion.id,
+            version=suggestion.reply_version,
+            body=_current_reply_body(suggestion),
+            status=status_value or suggestion.status,
+            created_by_user_id=actor_id,
+        )
+    )
+
+
+def _ensure_initial_reply_version(db: Session, suggestion: ReplySuggestion) -> None:
+    existing = db.scalar(
+        select(ReplySuggestionVersion.id).where(
+            ReplySuggestionVersion.reply_suggestion_id == suggestion.id,
+            ReplySuggestionVersion.version == 1,
+        )
+    )
+    if existing is None:
+        db.add(
+            ReplySuggestionVersion(
+                organization_id=suggestion.organization_id,
+                ticket_id=suggestion.ticket_id,
+                reply_suggestion_id=suggestion.id,
+                version=1,
+                body=suggestion.body,
+                status=ReplySuggestionStatus.SUGGESTED.value,
+                created_by_user_id=suggestion.created_by_user_id,
+                created_at=suggestion.created_at,
+            )
+        )
+
+
 def list_reply_suggestions(
     db: Session,
     organization_id: str,
@@ -48,6 +89,7 @@ def list_reply_suggestions(
         db.scalars(
             select(ReplySuggestion)
             .where(ReplySuggestion.organization_id == organization_id, ReplySuggestion.ticket_id == ticket_id)
+            .options(selectinload(ReplySuggestion.version_history))
             .order_by(ReplySuggestion.created_at.desc())
         )
     )
@@ -71,6 +113,8 @@ def create_agent_reply_suggestion(
         created_by_user_id=actor.id,
     )
     db.add(suggestion)
+    db.flush()
+    _record_reply_version(db, suggestion, actor_id=actor.id)
     write_ticket_event(
         db,
         ticket,
@@ -96,8 +140,11 @@ def update_reply_suggestion(
     if suggestion.status in {ReplySuggestionStatus.APPROVED.value, ReplySuggestionStatus.REJECTED.value, ReplySuggestionStatus.DRAFT_CREATED.value}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reply suggestion is already finalized")
 
+    _ensure_initial_reply_version(db, suggestion)
     suggestion.edited_body = payload.edited_body
+    suggestion.reply_version += 1
     suggestion.status = ReplySuggestionStatus.EDITED.value
+    _record_reply_version(db, suggestion, actor_id=actor.id)
     write_ticket_event(
         db,
         ticket,
@@ -124,6 +171,7 @@ def approve_reply_suggestion(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reply suggestion already has a Gmail draft")
 
     suggestion.status = ReplySuggestionStatus.APPROVED.value
+    suggestion.approved_reply_version = suggestion.reply_version
     suggestion.approved_by_user_id = actor.id
     suggestion.approved_at = datetime.now(UTC)
     write_ticket_event(
@@ -394,6 +442,8 @@ def create_ai_reply_suggestion_from_triage(
         created_by=ReplySuggestionCreatedBy.AI.value,
     )
     db.add(suggestion)
+    db.flush()
+    _record_reply_version(db, suggestion, actor_id=None)
     return suggestion
 
 

@@ -3,7 +3,7 @@ from enum import StrEnum
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -23,6 +23,20 @@ class ReplySuggestionStatus(StrEnum):
 class ReplySuggestionCreatedBy(StrEnum):
     AI = "ai"
     AGENT = "agent"
+
+
+class ReplySuggestionVersion(Base):
+    __tablename__ = "reply_suggestion_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)
+    ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id"), nullable=False, index=True)
+    reply_suggestion_id: Mapped[str] = mapped_column(ForeignKey("reply_suggestions.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    created_by_user_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
 
 
 class ReplySuggestion(Base):
@@ -49,3 +63,4 @@ class ReplySuggestion(Base):
     gmail_draft_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+    version_history: Mapped[list[ReplySuggestionVersion]] = relationship("ReplySuggestionVersion", order_by="ReplySuggestionVersion.version", lazy="selectin")

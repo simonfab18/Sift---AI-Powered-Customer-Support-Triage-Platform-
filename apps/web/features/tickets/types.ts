@@ -132,6 +132,18 @@ export type AITriageUsage = {
   resets_at: string;
   per_inbox: AITriageInboxUsage[];
 };
+export type ReplySuggestionVersion = {
+  id: string;
+  organization_id: string;
+  ticket_id: string;
+  reply_suggestion_id: string;
+  version: number;
+  body: string;
+  status: string;
+  created_by_user_id: string | null;
+  created_at: string;
+};
+
 export type ReplySuggestion = {
   id: string;
   organization_id: string;
@@ -150,6 +162,7 @@ export type ReplySuggestion = {
   gmail_draft_id: string | null;
   created_at: string;
   updated_at: string;
+  version_history: ReplySuggestionVersion[];
 };
 
 export type GmailDraft = {

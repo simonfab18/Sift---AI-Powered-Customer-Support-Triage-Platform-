@@ -64,6 +64,9 @@ def test_ai_triage_creates_reply_suggestion(client: TestClient, create_org, monk
     assert suggestions[0]["body"] == "Hi Casey, please send a photo."
     assert suggestions[0]["status"] == "suggested"
     assert suggestions[0]["created_by"] == "ai"
+    assert suggestions[0]["reply_version"] == 1
+    assert suggestions[0]["version_history"][0]["version"] == 1
+    assert suggestions[0]["version_history"][0]["body"] == "Hi Casey, please send a photo."
 
 
 def test_agent_can_edit_and_approve_reply_suggestion(client: TestClient, create_org) -> None:
@@ -76,11 +79,17 @@ def test_agent_can_edit_and_approve_reply_suggestion(client: TestClient, create_
     approve_response = client.post(f"/v1/orgs/{organization['id']}/reply-suggestions/{suggestion.id}/approve")
 
     assert edit_response.status_code == 200
-    assert edit_response.json()["status"] == "edited"
-    assert edit_response.json()["edited_body"] == "Edited reply."
+    edited = edit_response.json()
+    assert edited["status"] == "edited"
+    assert edited["edited_body"] == "Edited reply."
+    assert edited["reply_version"] == 2
+    assert [version["version"] for version in edited["version_history"]] == [1, 2]
+    assert edited["version_history"][0]["body"] == "Suggested reply."
+    assert edited["version_history"][1]["body"] == "Edited reply."
     assert approve_response.status_code == 200
     assert approve_response.json()["status"] == "approved"
     assert approve_response.json()["approved_by_user_id"] == "user-owner"
+    assert approve_response.json()["approved_reply_version"] == 2
 
     tickets_response = client.get(f"/v1/orgs/{organization['id']}/tickets")
     listed_ticket = next(item for item in tickets_response.json() if item["id"] == ticket.id)

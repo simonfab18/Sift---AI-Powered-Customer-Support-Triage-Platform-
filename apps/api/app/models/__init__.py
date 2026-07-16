@@ -12,7 +12,7 @@ from app.models.mail_import_rule import MailImportRule
 from app.models.member import OrganizationMember
 from app.models.organization import Organization
 from app.models.reply_approval import ReplyApproval
-from app.models.reply_suggestion import ReplySuggestion
+from app.models.reply_suggestion import ReplySuggestion, ReplySuggestionVersion
 from app.models.response_template import ResponseTemplate
 from app.models.routing_rule import RoutingRule, RoutingRuleExecution
 from app.models.ticket import Ticket
@@ -40,6 +40,7 @@ __all__ = [
     "OrganizationMember",
     "ReplyApproval",
     "ReplySuggestion",
+    "ReplySuggestionVersion",
     "ResponseTemplate",
     "RoutingRule",
     "RoutingRuleExecution",
