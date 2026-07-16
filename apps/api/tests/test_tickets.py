@@ -259,3 +259,18 @@ def test_resolved_and_spam_tickets_do_not_appear_in_default_active_queue(client:
         spam_ticket["id"],
     }
 
+
+def test_all_status_with_paused_sla_includes_resolved_and_spam_tickets(client: TestClient, create_org) -> None:
+    organization = create_org()
+    resolved_ticket = create_ticket(client, organization["id"], subject="Resolved paused")
+    spam_ticket = create_ticket(client, organization["id"], subject="Spam paused")
+    active_ticket = create_ticket(client, organization["id"], subject="Active")
+    client.post(f"/v1/orgs/{organization['id']}/tickets/{resolved_ticket['id']}/resolve")
+    client.post(f"/v1/orgs/{organization['id']}/tickets/{spam_ticket['id']}/mark-spam")
+
+    paused_response = client.get(f"/v1/orgs/{organization['id']}/tickets?status=all&sla_status=paused")
+
+    paused_ticket_ids = {ticket["id"] for ticket in paused_response.json()}
+    assert paused_response.status_code == 200
+    assert paused_ticket_ids == {resolved_ticket["id"], spam_ticket["id"]}
+    assert active_ticket["id"] not in paused_ticket_ids

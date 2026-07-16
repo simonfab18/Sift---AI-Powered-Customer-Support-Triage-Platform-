@@ -12,7 +12,7 @@ from app.models.ticket_event import TicketEvent
 from app.schemas.ticket import TicketAssign, TicketCreate, TicketListItem, TicketUpdate
 from app.services.rbac_service import require_membership
 from app.services.routing_rule_service import apply_routing_rules
-from app.services.sla_service import initialize_ticket_sla, refresh_ticket_sla_status
+from app.services.sla_service import PAUSED_STATUSES, SLA_PAUSED, initialize_ticket_sla, refresh_ticket_sla_status
 from app.services.workspace_settings_service import get_or_create_workspace_settings
 from app.services.ticket_lifecycle_service import transition_ticket_status
 
@@ -155,7 +155,10 @@ def list_tickets(
     if priority_filter:
         statement = statement.where(Ticket.priority == priority_filter)
     if sla_status_filter:
-        statement = statement.where(Ticket.sla_status == sla_status_filter)
+        if sla_status_filter == SLA_PAUSED:
+            statement = statement.where(Ticket.status.in_(PAUSED_STATUSES))
+        else:
+            statement = statement.where(Ticket.sla_status == sla_status_filter)
     if gmail_connection_id_filter:
         statement = statement.where(Ticket.gmail_connection_id == gmail_connection_id_filter)
     if gmail_inbox_type_filter and gmail_inbox_type_filter != "all":
@@ -302,6 +305,7 @@ def mark_ticket_spam(db: Session, organization_id: str, ticket_id: str, actor: A
         "ticket.marked_spam",
         {"previous_status": previous_status},
     )
+    refresh_ticket_sla_status(ticket)
     db.commit()
     return get_ticket_or_404(db, organization_id, ticket_id, actor)
 
@@ -317,6 +321,7 @@ def resolve_ticket(db: Session, organization_id: str, ticket_id: str, actor: Aut
         "ticket.resolved",
         {"previous_status": previous_status},
     )
+    refresh_ticket_sla_status(ticket)
     db.commit()
     return get_ticket_or_404(db, organization_id, ticket_id, actor)
 

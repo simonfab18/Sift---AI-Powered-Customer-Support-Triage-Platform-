@@ -109,7 +109,7 @@ export async function getTickets(
   filters: { status?: string; priority?: string; sla_status?: string; gmail_connection_id?: string; gmail_inbox_type?: string } = {},
 ): Promise<TicketListItem[]> {
   const params = new URLSearchParams();
-  if (filters.status && filters.status !== "all") params.set("status", filters.status);
+  if (filters.status && filters.status !== "active") params.set("status", filters.status);
   if (filters.priority && filters.priority !== "all") params.set("priority", filters.priority);
   if (filters.sla_status && filters.sla_status !== "all") params.set("sla_status", filters.sla_status);
   if (filters.gmail_connection_id && filters.gmail_connection_id !== "all") params.set("gmail_connection_id", filters.gmail_connection_id);

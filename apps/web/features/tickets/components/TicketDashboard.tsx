@@ -23,7 +23,7 @@ import type { BulkActionResponse, MetricsOverview, SavedView, TicketListItem } f
 import { TicketList } from "./TicketList";
 
 const urgencyOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-const statusOptions = ["all", "new", "open", "pending", "awaiting_approval", "draft_created", "resolved", "spam"];
+const statusOptions = ["active", "all", "new", "open", "pending", "awaiting_approval", "draft_created", "resolved", "spam"];
 const slaOptions = ["all", "on_track", "warning", "breached", "paused"];
 
 function slaSortValue(ticket: TicketListItem) {
@@ -45,7 +45,7 @@ export function TicketDashboard() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [urgency, setUrgency] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [slaFilter, setSlaFilter] = useState("all");
   const [inboxFilter, setInboxFilter] = useState("all");
   const [sourceTypeFilter, setSourceTypeFilter] = useState("all");
@@ -117,7 +117,7 @@ export function TicketDashboard() {
     const normalizedQuery = query.trim().toLowerCase();
     return tickets
       .filter((ticket) => urgency === "all" || ticket.priority === urgency)
-      .filter((ticket) => statusFilter === "all" || ticket.status === statusFilter)
+      .filter((ticket) => statusFilter === "all" || (statusFilter === "active" ? ticket.status !== "resolved" && ticket.status !== "spam" : ticket.status === statusFilter))
       .filter((ticket) => slaFilter === "all" || ticket.sla_status === slaFilter)
       .filter((ticket) => inboxFilter === "all" || ticket.gmail_connection_id === inboxFilter)
       .filter((ticket) => sourceTypeFilter === "all" || ticket.gmail_connection_inbox_type === sourceTypeFilter)
@@ -142,7 +142,7 @@ export function TicketDashboard() {
   function currentSavedViewFilters() {
     const filters: Record<string, string> = {};
     if (urgency !== "all") filters.priority = urgency;
-    if (statusFilter !== "all") filters.status = statusFilter;
+    if (statusFilter !== "active") filters.status = statusFilter;
     if (slaFilter !== "all") filters.sla_status = slaFilter;
     if (inboxFilter !== "all") filters.gmail_connection_id = inboxFilter;
     if (sourceTypeFilter !== "all") filters.gmail_inbox_type = sourceTypeFilter;
@@ -166,7 +166,7 @@ export function TicketDashboard() {
       labels.push(connection?.display_name || connection?.gmail_email || "Saved inbox");
     }
     if (view.filters.gmail_inbox_type) labels.push(view.filters.gmail_inbox_type.replaceAll("_", " "));
-    return labels.length ? labels.join(" / ") : "All active tickets";
+    return labels.length ? labels.join(" / ") : "Active tickets";
   }
 
   const activeSavedView = savedViews.find((view) => view.id === activeSavedViewId) ?? null;
@@ -183,7 +183,7 @@ export function TicketDashboard() {
 
   function applySavedView(view: SavedView) {
     setUrgency(view.filters.priority ?? "all");
-    setStatusFilter(view.filters.status ?? "all");
+    setStatusFilter(view.filters.status ?? "active");
     setSlaFilter(view.filters.sla_status ?? "all");
     setInboxFilter(view.filters.gmail_connection_id ?? "all");
     setSourceTypeFilter(view.filters.gmail_inbox_type ?? "all");
@@ -342,7 +342,7 @@ export function TicketDashboard() {
             <option value="low">Low</option>
           </select>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-            {statusOptions.map((status) => <option key={status} value={status}>{status === "all" ? "All status" : status.replaceAll("_", " ")}</option>)}
+            {statusOptions.map((status) => <option key={status} value={status}>{status === "active" ? "Active status" : status === "all" ? "All status" : status.replaceAll("_", " ")}</option>)}
           </select>
           <select value={slaFilter} onChange={(event) => setSlaFilter(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
             {slaOptions.map((sla) => <option key={sla} value={sla}>{sla === "all" ? "All SLA" : sla.replaceAll("_", " ")}</option>)}
@@ -404,7 +404,7 @@ export function TicketDashboard() {
           </select>
           {bulkAction === "change_status" ? (
             <select value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-              {statusOptions.filter((status) => status !== "all").map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
+              {statusOptions.filter((status) => status !== "active" && status !== "all").map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
             </select>
           ) : bulkAction === "assign" ? (
             <select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
