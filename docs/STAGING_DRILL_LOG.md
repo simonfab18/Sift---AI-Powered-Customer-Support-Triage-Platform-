@@ -587,3 +587,29 @@ Pilot launch cleanup:
 Outcome:
 - Gmail-first pilot hardening is complete from an engineering/staging-readiness standpoint.
 - Public/commercial launch still requires external legal review.
+
+## 2026-07-15 - Staging AI global cap adjustment
+
+Status: Complete.
+
+Change:
+- Updated Cloud Run staging revision `sift-api-staging-00067-6zh` with `AI_TRIAGE_DAILY_GEMINI_LIMIT=100` and `AI_TRIAGE_DAILY_GEMINI_ORG_LIMIT=20`.
+- This keeps each workspace capped at 20 daily free Gemini triage runs while preventing one workspace or retry burst from exhausting the entire staging app at 20 total attempts.
+
+Verification:
+- Cloud Run service config shows `AI_TRIAGE_DAILY_GEMINI_LIMIT=100` and `AI_TRIAGE_DAILY_GEMINI_ORG_LIMIT=20`.
+- Cloud Run `/health/ready` returned `200`.
+
+## 2026-07-15 - Operations failed-job dismissal
+
+Status: Complete.
+
+Change:
+- Added an owner/admin `Dismiss` action for failed operations jobs in the dashboard pilot operations panel.
+- Dismissal marks the failed job as `canceled`, clears retry scheduling, stores dismissal metadata, and removes it from the failed jobs list without deleting history.
+
+Verification:
+- Focused operations tests passed locally: `8 passed`.
+- Frontend typecheck passed.
+- Deployed Cloud Run revision `sift-api-staging-00068-jl7` and Vercel deployment `dpl_7z2h1qmTUiWoBKeHf2tQNe1R8rAN`.
+- Cloud Run `/health/ready` returned `200`; Vercel `/dashboard` returned `200`.

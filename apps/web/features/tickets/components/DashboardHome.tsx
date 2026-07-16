@@ -7,7 +7,7 @@ import { StatusBadge, UrgencyBadge } from "@/components/ui/Badges";
 import { StatCard } from "@/components/ui/StatCard";
 import { TriageMeter } from "@/components/ui/TriageMeter";
 import { getStoredOrganizationId } from "@/features/organizations/components/OrganizationManager";
-import { getOperationsFailures, getSyncHealth, retryOperationsJob } from "@/lib/api-client";
+import { dismissOperationsJob, getOperationsFailures, getSyncHealth, retryOperationsJob } from "@/lib/api-client";
 import { OnboardingChecklist } from "@/features/onboarding/components/OnboardingChecklist";
 import { getMetricsOverview, getReplySuggestions, getTickets } from "@/features/tickets/api";
 import type { MetricsOverview, ReplySuggestion, TicketListItem } from "@/features/tickets/types";
@@ -70,6 +70,7 @@ export function DashboardHome() {
   const [syncHealth, setSyncHealth] = useState<SyncHealth | null>(null);
   const [operationsMessage, setOperationsMessage] = useState<string | null>(null);
   const [retryingJobId, setRetryingJobId] = useState<string | null>(null);
+  const [dismissingJobId, setDismissingJobId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   async function getContext(): Promise<DashboardContext | null> {
@@ -148,6 +149,25 @@ export function DashboardHome() {
       setOperationsMessage(error instanceof Error ? error.message : "Failed to retry job.");
     } finally {
       setRetryingJobId(null);
+    }
+  }
+  async function handleDismissJob(job: OperationsJob) {
+    const context = await getContext();
+    if (!context) {
+      setOperationsMessage("Select an organization and sign in before dismissing jobs.");
+      return;
+    }
+
+    setDismissingJobId(job.id);
+    setOperationsMessage(null);
+    try {
+      await dismissOperationsJob(context.accessToken, context.organizationId, job.id);
+      setOperationsMessage(`${operationLabel(job.job_type)} dismissed from the failed jobs list.`);
+      await loadOperations(context);
+    } catch (error) {
+      setOperationsMessage(error instanceof Error ? error.message : "Failed to dismiss job.");
+    } finally {
+      setDismissingJobId(null);
     }
   }
 
@@ -238,13 +258,18 @@ export function DashboardHome() {
                     <p className="mt-1">{job.error_message ?? job.error_code ?? "Job failed without a detailed message."}</p>
                     <p className="mt-1 opacity-80">Attempts {job.attempts}/{job.max_attempts}{job.next_retry_at ? ` / next retry ${formatDateTime(job.next_retry_at)}` : ""}</p>
                   </div>
-                  {job.retryable ? (
-                    <button type="button" onClick={() => void handleRetryJob(job)} disabled={retryingJobId === job.id} className="rounded-md bg-white px-3 py-2 font-medium text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 disabled:opacity-50">
-                      {retryingJobId === job.id ? "Retrying..." : "Retry"}
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    {job.retryable ? (
+                      <button type="button" onClick={() => void handleRetryJob(job)} disabled={retryingJobId === job.id || dismissingJobId === job.id} className="rounded-md bg-white px-3 py-2 font-medium text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 disabled:opacity-50">
+                        {retryingJobId === job.id ? "Retrying..." : "Retry"}
+                      </button>
+                    ) : (
+                      <span className="rounded-md bg-white/70 px-2 py-1 font-medium">Manual review</span>
+                    )}
+                    <button type="button" onClick={() => void handleDismissJob(job)} disabled={retryingJobId === job.id || dismissingJobId === job.id} className="rounded-md bg-white/80 px-3 py-2 font-medium text-slate-700 shadow-sm ring-1 ring-inset ring-slate-300 disabled:opacity-50">
+                      {dismissingJobId === job.id ? "Dismissing..." : "Dismiss"}
                     </button>
-                  ) : (
-                    <span className="rounded-md bg-white/70 px-2 py-1 font-medium">Manual review</span>
-                  )}
+                  </div>
                 </div>
               </div>
             ))}

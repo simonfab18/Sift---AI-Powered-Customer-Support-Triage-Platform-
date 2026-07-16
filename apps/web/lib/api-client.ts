@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from "@/lib/config";
-import type { GmailConnection, JobRun, MailImportRule, MeResponse, Organization, Member, OperationsFailureList, OperationsRetryResult, OrganizationDeletionRequest, OrganizationExport, SyncHealth } from "@/lib/api-types";
+import type { GmailConnection, JobRun, MailImportRule, MeResponse, Organization, Member, OperationsFailureList, OperationsJob, OperationsRetryResult, OrganizationDeletionRequest, OrganizationExport, SyncHealth } from "@/lib/api-types";
 
 function toApiErrorMessage(errorText: string, status: number) {
   try {
@@ -129,6 +129,11 @@ export function getSyncHealth(accessToken: string, organizationId: string) {
 
 export function retryOperationsJob(accessToken: string, organizationId: string, jobId: string) {
   return apiFetch<OperationsRetryResult>(`/v1/orgs/${organizationId}/operations/jobs/${jobId}/retry`, accessToken, {
+    method: "POST",
+  });
+}
+export function dismissOperationsJob(accessToken: string, organizationId: string, jobId: string) {
+  return apiFetch<OperationsJob>(`/v1/orgs/${organizationId}/operations/jobs/${jobId}/dismiss`, accessToken, {
     method: "POST",
   });
 }

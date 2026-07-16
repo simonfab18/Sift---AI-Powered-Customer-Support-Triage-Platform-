@@ -69,5 +69,9 @@ class AITriageUsageRead(BaseModel):
     used: int
     remaining: int | None = None
     paused_for_today: bool
+    global_daily_limit: int
+    global_used: int
+    global_remaining: int | None = None
+    global_paused_for_today: bool
     resets_at: datetime
     per_inbox: list[AITriageInboxUsageRead]

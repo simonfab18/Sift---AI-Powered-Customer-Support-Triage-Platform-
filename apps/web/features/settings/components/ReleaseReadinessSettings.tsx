@@ -107,6 +107,10 @@ function readinessLabel(status: PilotReadinessItem["status"]) {
 function isValidEmailAddress(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
+function usageLimitLabel(used: number, limit: number) {
+  if (limit <= 0) return `${used}/unlimited`;
+  return `${used}/${limit}`;
+}
 
 function ToggleRow({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
@@ -190,6 +194,9 @@ export function ReleaseReadinessSettings() {
 
   const pilotContactInvalid = Boolean(pilotFeedbackContact.trim()) && !isValidEmailAddress(pilotFeedbackContact);
 
+  const workspaceAiPaused = Boolean(aiUsage?.paused_for_today);
+  const globalAiPaused = Boolean(aiUsage?.global_paused_for_today);
+  const aiPausedForToday = workspaceAiPaused || globalAiPaused;
   const pilotReadinessItems = useMemo<PilotReadinessItem[]>(() => [
     {
       label: "Gmail sync",
@@ -198,11 +205,13 @@ export function ReleaseReadinessSettings() {
     },
     {
       label: "AI triage",
-      status: autoTriageEnabled && !aiUsage?.paused_for_today ? "ready" : autoTriageEnabled ? "review" : "attention",
+      status: autoTriageEnabled && !aiPausedForToday ? "ready" : autoTriageEnabled ? "review" : "attention",
       detail: !autoTriageEnabled
         ? "Automatic AI triage is paused for this workspace."
-        : aiUsage?.paused_for_today
-          ? "AI is paused for today by the free pilot cap; agents can still review tickets manually."
+        : aiPausedForToday
+          ? globalAiPaused
+            ? "AI is paused by the staging-wide free pilot safety cap; agents can still review tickets manually."
+            : "AI is paused for this workspace by the free pilot cap; agents can still review tickets manually."
           : "Automatic triage is allowed while free-tier quota is available.",
     },
     {
@@ -236,7 +245,7 @@ export function ReleaseReadinessSettings() {
       status: "ready",
       detail: "Owner/admin export and deletion-request controls are available from this page.",
     },
-  ], [aiUsage?.paused_for_today, attachmentAiProcessingEnabled, autoTriageEnabled, directSendEnabled, draftCreationEnabled, draftRequiresApproval, pilotContactInvalid, pilotFeedbackContact, syncEnabled]);
+  ], [aiPausedForToday, attachmentAiProcessingEnabled, autoTriageEnabled, directSendEnabled, draftCreationEnabled, draftRequiresApproval, globalAiPaused, pilotContactInvalid, pilotFeedbackContact, syncEnabled]);
 
   const pilotAttentionCount = pilotReadinessItems.filter((item) => item.status === "attention").length;
   const pilotReviewCount = pilotReadinessItems.filter((item) => item.status === "review").length;
@@ -365,8 +374,10 @@ export function ReleaseReadinessSettings() {
             <div><dt className="text-slate-500">Billing</dt><dd className="font-medium">Free pilot only</dd></div>
             <div>
               <dt className="text-slate-500">AI quota</dt>
-              <dd className="font-medium">{aiUsage ? `${aiUsage.used}/${aiUsage.daily_limit || "unlimited"} today` : "App-side Gemini cap"}</dd>
-              {aiUsage?.paused_for_today ? <p className="mt-1 text-xs font-medium text-amber-700">AI paused for today. It resets {new Date(aiUsage.resets_at).toLocaleString()}.</p> : null}
+              <dd className="font-medium">{aiUsage ? `Workspace ${usageLimitLabel(aiUsage.used, aiUsage.daily_limit)} today` : "App-side Gemini cap"}</dd>
+              {aiUsage ? <p className="mt-1 text-xs text-slate-500">Staging safety cap {usageLimitLabel(aiUsage.global_used, aiUsage.global_daily_limit)} today.</p> : null}
+              {aiUsage?.paused_for_today ? <p className="mt-1 text-xs font-medium text-amber-700">Workspace AI paused for today. It resets {new Date(aiUsage.resets_at).toLocaleString()}.</p> : null}
+              {aiUsage?.global_paused_for_today ? <p className="mt-1 text-xs font-medium text-amber-700">Staging-wide AI safety cap is reached. It resets {new Date(aiUsage.resets_at).toLocaleString()}.</p> : null}
             </div>
             <div><dt className="text-slate-500">Send policy</dt><dd className="font-medium">{directSendEnabled ? "Direct send allowed with confirmation" : "Draft only, no direct send"}</dd></div>
             <div><dt className="text-slate-500">Attachment AI</dt><dd className="font-medium">{attachmentAiProcessingEnabled ? "Opted in" : "Not allowed"}</dd></div>
@@ -422,9 +433,10 @@ export function ReleaseReadinessSettings() {
         <h2 className="font-display text-lg font-semibold">Lifecycle communications</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Reusable pilot messages for onboarding, degraded sync, quota limits, and approval reminders.</p>
         {aiUsage ? (
-          <div className={aiUsage.paused_for_today ? "mt-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" : "mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"}>
-            <p className="font-medium">{aiUsage.paused_for_today ? "AI paused for today" : "AI usage available today"}</p>
-            <p className="mt-1">{aiUsage.daily_limit > 0 ? `${aiUsage.remaining} of ${aiUsage.daily_limit} daily free triage runs remain. Resets ${new Date(aiUsage.resets_at).toLocaleString()}.` : "The app-side daily cap is disabled for this environment."}</p>
+          <div className={aiPausedForToday ? "mt-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" : "mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"}>
+            <p className="font-medium">{aiPausedForToday ? "AI paused for today" : "AI usage available today"}</p>
+            <p className="mt-1">Workspace: {aiUsage.daily_limit > 0 ? `${aiUsage.remaining} of ${aiUsage.daily_limit} daily free triage runs remain` : "daily cap disabled"}. Staging safety cap: {aiUsage.global_daily_limit > 0 ? `${aiUsage.global_remaining} of ${aiUsage.global_daily_limit} remain` : "disabled"}. Resets {new Date(aiUsage.resets_at).toLocaleString()}.</p>
+            {globalAiPaused && !workspaceAiPaused ? <p className="mt-2 font-medium">Your workspace still has quota, but the staging-wide safety cap is reached.</p> : null}
             {aiUsage.per_inbox.length > 0 ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {aiUsage.per_inbox.map((inbox) => <span key={inbox.gmail_connection_id ?? "manual"} className="rounded-md bg-white px-2 py-1 text-xs text-slate-600">{inbox.gmail_email ?? "Manual tickets"}: {inbox.used}</span>)}

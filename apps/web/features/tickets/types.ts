@@ -123,6 +123,10 @@ export type AITriageUsage = {
   used: number;
   remaining: number | null;
   paused_for_today: boolean;
+  global_daily_limit: number;
+  global_used: number;
+  global_remaining: number | null;
+  global_paused_for_today: boolean;
   resets_at: string;
   per_inbox: AITriageInboxUsage[];
 };

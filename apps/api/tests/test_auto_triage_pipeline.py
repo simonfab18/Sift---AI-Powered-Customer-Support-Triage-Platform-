@@ -233,6 +233,10 @@ def test_ai_triage_usage_endpoint_counts_today(client: TestClient, create_org) -
     assert payload["used"] == 1
     assert payload["remaining"] == 19
     assert payload["paused_for_today"] is False
+    assert payload["global_daily_limit"] == 20
+    assert payload["global_used"] == 1
+    assert payload["global_remaining"] == 19
+    assert payload["global_paused_for_today"] is False
     assert payload["per_inbox"] == [{"gmail_connection_id": None, "gmail_email": None, "used": 1}]
 
 def test_failed_triage_is_visible_and_retryable(client: TestClient, create_org, monkeypatch, stub_auto_triage_dispatch) -> None:

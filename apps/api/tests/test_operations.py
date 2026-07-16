@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 
 import pytest
 from fastapi.testclient import TestClient
@@ -63,6 +63,34 @@ def test_workspace_operations_lists_retryable_failures_and_retries(
     assert retry_job["job_metadata"]["manual_retry"] is True
     assert stub_auto_triage_dispatch[-1] == retry_job["id"]
 
+
+def test_workspace_operations_dismisses_failed_job(client: TestClient, create_org) -> None:
+    organization = create_org()
+    with client.session_factory() as db:
+        job = JobRun(
+            organization_id=organization["id"],
+            job_type="ai_triage",
+            queue_name="ai_triage",
+            status="failed",
+            error_message="old quota failure",
+            retryable=True,
+        )
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    dismiss_response = client.post(f"/v1/orgs/{organization['id']}/operations/jobs/{job_id}/dismiss")
+
+    assert dismiss_response.status_code == 200
+    dismissed = dismiss_response.json()
+    assert dismissed["status"] == "canceled"
+    assert dismissed["retryable"] is False
+    assert dismissed["next_retry_at"] is None
+    assert dismissed["job_metadata"]["dismissed_reason"] == "manual_operations_dismissal"
+
+    failures_response = client.get(f"/v1/orgs/{organization['id']}/operations/failures")
+    assert failures_response.status_code == 200
+    assert failures_response.json()["jobs"] == []
 
 def test_operations_requires_admin_or_owner(client: TestClient, create_org) -> None:
     organization = create_org()

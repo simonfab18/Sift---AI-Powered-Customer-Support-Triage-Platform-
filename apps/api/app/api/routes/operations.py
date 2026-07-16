@@ -14,6 +14,7 @@ from app.schemas.operations import (
 )
 from app.services.pubsub_verification_service import verify_scheduler_oidc_token
 from app.services.operations_service import (
+    dismiss_failed_job,
     get_operations_job,
     get_sync_health,
     list_system_failures,
@@ -75,6 +76,18 @@ def retry_operations_job(
     original, retry_job = retry_failed_job(db, organization_id, job_id, current_user)
     return OperationsRetryRead(original_job=original, retry_job=retry_job)
 
+
+@router.post(
+    "/orgs/{organization_id}/operations/jobs/{job_id}/dismiss",
+    response_model=OperationsJobRead,
+)
+def dismiss_operations_job(
+    organization_id: str,
+    job_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    return dismiss_failed_job(db, organization_id, job_id, current_user)
 
 @router.get(
     "/orgs/{organization_id}/operations/sync-health",

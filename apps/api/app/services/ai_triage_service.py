@@ -193,7 +193,9 @@ def get_ai_triage_usage(db: Session, organization_id: str, actor: AuthenticatedU
     now = utc_now()
     day_start, day_end = _triage_day_bounds(now)
     limit = settings.ai_triage_daily_gemini_org_limit
+    global_limit = settings.ai_triage_daily_gemini_limit
     used = _ai_triage_usage_count(db, day_start, day_end, organization_id=organization_id)
+    global_used = _ai_triage_usage_count(db, day_start, day_end)
     per_inbox_rows = db.execute(
         select(Ticket.gmail_connection_id, GmailConnection.gmail_email, func.count(JobRun.id))
         .select_from(JobRun)
@@ -213,12 +215,17 @@ def get_ai_triage_usage(db: Session, organization_id: str, actor: AuthenticatedU
         for row in per_inbox_rows
     ]
     remaining = None if limit <= 0 else max(0, limit - used)
+    global_remaining = None if global_limit <= 0 else max(0, global_limit - global_used)
     return AITriageUsageRead(
         date=now.date().isoformat(),
         daily_limit=limit,
         used=used,
         remaining=remaining,
         paused_for_today=limit > 0 and used >= limit,
+        global_daily_limit=global_limit,
+        global_used=global_used,
+        global_remaining=global_remaining,
+        global_paused_for_today=global_limit > 0 and global_used >= global_limit,
         resets_at=day_end,
         per_inbox=per_inbox,
     )

@@ -181,6 +181,24 @@ def get_operations_job(db: Session, organization_id: str, job_id: str, actor: Au
     return job
 
 
+def dismiss_failed_job(db: Session, organization_id: str, job_id: str, actor: AuthenticatedUser) -> JobRun:
+    job = get_operations_job(db, organization_id, job_id, actor)
+    if job.status != JobRunStatus.FAILED.value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only failed jobs can be dismissed")
+    metadata = job.job_metadata or {}
+    job.status = JobRunStatus.CANCELED.value
+    job.retryable = False
+    job.next_retry_at = None
+    job.job_metadata = {
+        **metadata,
+        "dismissed_by_user_id": actor.id,
+        "dismissed_at": utc_now().isoformat(),
+        "dismissed_reason": "manual_operations_dismissal",
+    }
+    db.commit()
+    db.refresh(job)
+    return job
+
 def retry_failed_job(db: Session, organization_id: str, job_id: str, actor: AuthenticatedUser) -> tuple[JobRun, JobRun]:
     original = get_operations_job(db, organization_id, job_id, actor)
     if original.status != JobRunStatus.FAILED.value:
