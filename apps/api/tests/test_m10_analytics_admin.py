@@ -134,6 +134,7 @@ def test_m10_admin_analytics_surfaces_support_ai_and_gmail_metrics(client: TestC
     body = response.json()
     assert body["support"]["ticket_volume"] == 1
     assert body["support"]["by_category"] == {"damaged_item": 1}
+    assert body["support"]["by_active_priority"] == {}
     assert body["support"]["agent_workload"][0]["user_id"] == "user-owner"
     assert body["support"]["sla_attainment_rate"] == 1.0
     assert body["ai_quality"]["triage_completion_rate"] == 1.0

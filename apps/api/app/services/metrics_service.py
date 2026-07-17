@@ -140,6 +140,11 @@ def _support_performance(db: Session, organization_id: str) -> SupportPerformanc
         .where(Ticket.organization_id == organization_id)
         .group_by(Ticket.priority)
     ).all()
+    active_priority_rows = db.execute(
+        select(Ticket.priority, func.count(Ticket.id))
+        .where(Ticket.organization_id == organization_id, Ticket.status.in_(ACTIVE_STATUSES))
+        .group_by(Ticket.priority)
+    ).all()
 
     first_review_by_ticket: dict[str, datetime] = {}
     resolved_by_ticket: dict[str, datetime] = {}
@@ -220,6 +225,7 @@ def _support_performance(db: Session, organization_id: str) -> SupportPerformanc
         ticket_volume=len(tickets),
         by_category=_count_rows(category_rows),
         by_priority=_count_rows(priority_rows),
+        by_active_priority=_count_rows(active_priority_rows),
         first_review_time_avg_minutes=round(mean(first_review_minutes), 2) if first_review_minutes else None,
         resolution_time_avg_minutes=round(mean(resolution_minutes), 2) if resolution_minutes else None,
         approval_wait_time_avg_minutes=round(mean(approval_wait_minutes), 2) if approval_wait_minutes else None,
