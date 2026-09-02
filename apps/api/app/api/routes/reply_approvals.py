@@ -1,6 +1,7 @@
-﻿from fastapi import APIRouter, status
+﻿from fastapi import APIRouter, Depends, status
 
 from app.api.deps import CurrentUser, DbSession
+from app.api.rate_limits import limit_draft_creation
 from app.schemas.reply_approval import GmailDraftCreateRead, GmailDraftRead, ReplyApprovalRead, ReplyApprovalUpdate
 from app.services.reply_approval_service import (
     approve_reply_and_create_draft,
@@ -46,6 +47,7 @@ def patch_reply_approval(
     "/orgs/{organization_id}/tickets/{ticket_id}/reply-approvals/{approval_id}/create-gmail-draft",
     response_model=GmailDraftCreateRead,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(limit_draft_creation)],
 )
 async def create_reply_draft_compat(
     organization_id: str,
@@ -84,6 +86,7 @@ def approve_suggestion(
     "/orgs/{organization_id}/reply-suggestions/{suggestion_id}/create-gmail-draft",
     response_model=GmailDraftCreateRead,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(limit_draft_creation)],
 )
 async def create_reply_suggestion_draft(
     organization_id: str,

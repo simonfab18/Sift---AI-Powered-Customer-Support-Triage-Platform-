@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -5,6 +7,7 @@ from app.core.config import settings
 from app.core.encryption import decrypt_secret
 from app.models.audit_log import AuditLog
 from app.models.gmail_connection import GmailConnection
+from app.models.gmail_sync_event import GmailSyncEvent
 from app.models.gmail_oauth_state import GmailOAuthState
 from app.models.mail_import_rule import MailImportRule
 from app.models.member import MemberRole, MemberStatus, OrganizationMember
@@ -58,6 +61,7 @@ def test_oauth_callback_creates_connection_with_encrypted_refresh_token(
     monkeypatch.setattr(settings, "google_client_id", "google-client-id")
     monkeypatch.setattr(settings, "google_client_secret", "google-client-secret")
     monkeypatch.setattr(settings, "google_redirect_uri", "http://localhost:8000/v1/gmail/oauth/callback")
+    monkeypatch.setattr(settings, "frontend_origin", "https://app.example.com")
     monkeypatch.setattr(settings, "encryption_key", "test-encryption-key")
 
     async def fake_exchange_oauth_code(code: str):
@@ -84,10 +88,15 @@ def test_oauth_callback_creates_connection_with_encrypted_refresh_token(
 
     start_response = client.get(f"/v1/orgs/{organization['id']}/gmail/oauth/start")
     state = start_response.json()["state"]
-    callback_response = client.get(f"/v1/gmail/oauth/callback?state={state}&code=callback-code")
+    callback_response = client.get(
+        f"/v1/gmail/oauth/callback?state={state}&code=callback-code",
+        follow_redirects=False,
+    )
 
-    assert callback_response.status_code == 200
-    assert callback_response.json()["gmail_email"] == "support@example.com"
+    assert callback_response.status_code == 303
+    assert callback_response.headers["location"].startswith(
+        "https://app.example.com/dashboard/settings/gmail?gmail=connected&connection_id="
+    )
 
     with client.session_factory() as db:
         connection = db.scalar(select(GmailConnection))
@@ -104,9 +113,11 @@ def test_oauth_callback_creates_connection_with_encrypted_refresh_token(
         assert audit_log is not None
         assert audit_log.action == "gmail.connection.connected"
         assert audit_log.resource_id == connection.id
-        assert audit_log.audit_metadata["refresh_token"] == "[REDACTED]"
-        assert audit_log.audit_metadata["access_token"] == "[REDACTED]"
+        assert "refresh_token" not in audit_log.audit_metadata
+        assert "access_token" not in audit_log.audit_metadata
         assert audit_log.audit_metadata["gmail_email"] == "support@example.com"
+        assert connection.watch_status == "not_configured"
+        assert connection.sync_status == "degraded"
 
 
 def test_oauth_callback_rejects_invalid_state(client: TestClient) -> None:
@@ -158,6 +169,47 @@ def test_members_can_list_connections_and_admin_can_update_import_rule(
     assert patch_response.json()["import_unread_only"] is False
 
 
+def test_list_connections_clears_stale_sync_lock_without_running_event(client: TestClient, create_org) -> None:
+    organization = create_org()
+    with client.session_factory() as db:
+        connection = GmailConnection(
+            organization_id=organization["id"],
+            connected_by_user_id="user-owner",
+            gmail_email="support@example.com",
+            google_account_id="google-account-id",
+            encrypted_refresh_token="encrypted-token",
+            scopes="openid email",
+            status="active",
+            sync_status="syncing",
+            sync_error_code="history_sync_failed",
+            sync_lock_id="stale-lock",
+            sync_lock_expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        )
+        db.add(connection)
+        db.flush()
+        db.add(
+            GmailSyncEvent(
+                organization_id=organization["id"],
+                gmail_connection_id=connection.id,
+                trigger_type="fallback_sync",
+                status="skipped",
+            )
+        )
+        db.commit()
+        connection_id = connection.id
+
+    response = client.get(f"/v1/orgs/{organization['id']}/gmail/connections")
+
+    assert response.status_code == 200
+    body = response.json()[0]
+    assert body["id"] == connection_id
+    assert body["sync_status"] == "degraded"
+    assert body["sync_lock_expires_at"] is None
+
+    with client.session_factory() as db:
+        connection = db.get(GmailConnection, connection_id)
+    assert connection.sync_lock_id is None
+    assert connection.sync_lock_expires_at is None
 def test_agent_cannot_revoke_gmail_connection(client: TestClient, create_org) -> None:
     organization = create_org()
     with client.session_factory() as db:

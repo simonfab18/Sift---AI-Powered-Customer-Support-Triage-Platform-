@@ -1,4 +1,4 @@
-from fastapi.testclient import TestClient
+﻿from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.models.audit_log import AuditLog
@@ -7,7 +7,7 @@ from app.models.organization import Organization
 from app.services.audit_log_service import create_audit_log
 
 
-def test_members_can_list_audit_logs(client: TestClient, create_org) -> None:
+def test_owner_can_list_audit_logs(client: TestClient, create_org) -> None:
     organization = create_org()
     with client.session_factory() as db:
         create_audit_log(
@@ -84,7 +84,7 @@ def test_sensitive_fields_are_redacted_from_audit_logs(client: TestClient, creat
     assert metadata["items"][0]["api_key"] == "[REDACTED]"
 
 
-def test_agents_can_read_audit_logs_but_non_members_cannot(client: TestClient, create_org) -> None:
+def test_agents_cannot_read_audit_logs_and_non_members_cannot(client: TestClient, create_org) -> None:
     organization = create_org()
     with client.session_factory() as db:
         db.add(
@@ -107,7 +107,7 @@ def test_agents_can_read_audit_logs_but_non_members_cannot(client: TestClient, c
 
     client.current_user.update({"id": "agent-user", "email": "agent@example.com"})
     agent_response = client.get(f"/v1/orgs/{organization['id']}/audit-logs")
-    assert agent_response.status_code == 200
+    assert agent_response.status_code == 403
 
     client.current_user.update({"id": "outside-user", "email": "outside@example.com"})
     outside_response = client.get(f"/v1/orgs/{organization['id']}/audit-logs")

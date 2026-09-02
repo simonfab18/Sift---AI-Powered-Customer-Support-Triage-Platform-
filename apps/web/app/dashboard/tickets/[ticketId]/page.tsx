@@ -3,3 +3,4 @@ import { TicketDetailClient } from "@/features/tickets/components/TicketDetailCl
 export default function TicketDetailPage({ params }: { params: { ticketId: string } }) {
   return <TicketDetailClient ticketId={params.ticketId} />;
 }
+

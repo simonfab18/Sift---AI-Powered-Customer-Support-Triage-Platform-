@@ -14,6 +14,7 @@ def test_member_can_read_default_workspace_settings(client: TestClient, create_o
     assert body["default_reply_signature"] == "Best regards,\nCustomer Support Team"
     assert body["auto_triage_enabled"] is True
     assert body["draft_requires_approval"] is True
+    assert body["attachment_ai_processing_enabled"] is False
 
 
 def test_owner_can_update_workspace_settings(client: TestClient, create_org) -> None:
@@ -25,6 +26,7 @@ def test_owner_can_update_workspace_settings(client: TestClient, create_org) -> 
             "default_reply_signature": "Regards,\nPilot Team",
             "auto_triage_enabled": False,
             "draft_requires_approval": True,
+            "attachment_ai_processing_enabled": True,
         },
     )
 
@@ -32,7 +34,17 @@ def test_owner_can_update_workspace_settings(client: TestClient, create_org) -> 
     body = response.json()
     assert body["default_reply_signature"] == "Regards,\nPilot Team"
     assert body["auto_triage_enabled"] is False
+    assert body["attachment_ai_processing_enabled"] is True
 
+def test_workspace_settings_reject_invalid_pilot_contact(client: TestClient, create_org) -> None:
+    organization = create_org()
+
+    response = client.patch(
+        f"/v1/orgs/{organization['id']}/workspace-settings",
+        json={"pilot_feedback_contact": "not-an-email"},
+    )
+
+    assert response.status_code == 422
 
 def test_agent_cannot_update_workspace_settings(client: TestClient, create_org) -> None:
     organization = create_org()

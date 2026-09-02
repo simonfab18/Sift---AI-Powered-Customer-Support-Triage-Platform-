@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.encryption import encrypt_secret
 from app.models.ai_triage_result import AITriageResult
 from app.models.gmail_connection import GmailConnection
@@ -63,6 +64,9 @@ def test_ai_triage_creates_reply_suggestion(client: TestClient, create_org, monk
     assert suggestions[0]["body"] == "Hi Casey, please send a photo."
     assert suggestions[0]["status"] == "suggested"
     assert suggestions[0]["created_by"] == "ai"
+    assert suggestions[0]["reply_version"] == 1
+    assert suggestions[0]["version_history"][0]["version"] == 1
+    assert suggestions[0]["version_history"][0]["body"] == "Hi Casey, please send a photo."
 
 
 def test_agent_can_edit_and_approve_reply_suggestion(client: TestClient, create_org) -> None:
@@ -75,12 +79,25 @@ def test_agent_can_edit_and_approve_reply_suggestion(client: TestClient, create_
     approve_response = client.post(f"/v1/orgs/{organization['id']}/reply-suggestions/{suggestion.id}/approve")
 
     assert edit_response.status_code == 200
-    assert edit_response.json()["status"] == "edited"
-    assert edit_response.json()["edited_body"] == "Edited reply."
+    edited = edit_response.json()
+    assert edited["status"] == "edited"
+    assert edited["edited_body"] == "Edited reply."
+    assert edited["reply_version"] == 2
+    assert [version["version"] for version in edited["version_history"]] == [1, 2]
+    assert edited["version_history"][0]["body"] == "Suggested reply."
+    assert edited["version_history"][1]["body"] == "Edited reply."
     assert approve_response.status_code == 200
     assert approve_response.json()["status"] == "approved"
     assert approve_response.json()["approved_by_user_id"] == "user-owner"
+    assert approve_response.json()["approved_reply_version"] == 2
 
+    tickets_response = client.get(f"/v1/orgs/{organization['id']}/tickets")
+    listed_ticket = next(item for item in tickets_response.json() if item["id"] == ticket.id)
+    assert listed_ticket["latest_reply_status"] == "approved"
+    assert listed_ticket["latest_reply_gmail_draft_id"] is None
+
+    ticket_response = client.get(f"/v1/orgs/{organization['id']}/tickets/{ticket.id}")
+    assert ticket_response.json()["latest_reply_status"] == "approved"
     events_response = client.get(f"/v1/orgs/{organization['id']}/tickets/{ticket.id}/events")
     assert "ticket.reply_suggestion_approved" in [event["event_type"] for event in events_response.json()]
 
@@ -125,6 +142,30 @@ def test_approved_reply_suggestion_can_create_draft(client: TestClient, create_o
     assert ticket_response.json()["status"] == "draft_created"
 
 
+
+def test_resolved_ticket_detail_keeps_terminal_status_after_draft_created(client: TestClient, create_org, monkeypatch) -> None:
+    organization, ticket, suggestion = _create_reply_suggestion(client, create_org, with_gmail=True)
+    monkeypatch.setattr(
+        "app.services.reply_suggestion_service.refresh_gmail_access_token",
+        fake_refresh_gmail_access_token,
+    )
+    monkeypatch.setattr("app.services.reply_suggestion_service.create_gmail_draft", fake_create_gmail_draft)
+
+    client.post(f"/v1/orgs/{organization['id']}/reply-suggestions/{suggestion.id}/approve")
+    draft_response = client.post(f"/v1/orgs/{organization['id']}/reply-suggestions/{suggestion.id}/create-gmail-draft")
+    assert draft_response.status_code == 201
+
+    resolve_response = client.post(f"/v1/orgs/{organization['id']}/tickets/{ticket.id}/resolve")
+    detail_response = client.get(f"/v1/orgs/{organization['id']}/tickets/{ticket.id}")
+
+    assert resolve_response.status_code == 200
+    assert resolve_response.json()["status"] == "resolved"
+    assert resolve_response.json()["sla_status"] == "paused"
+    assert detail_response.json()["status"] == "resolved"
+    assert detail_response.json()["sla_status"] == "paused"
+    assert detail_response.json()["latest_reply_status"] == "draft_created"
+    assert detail_response.json()["latest_reply_gmail_draft_id"] == "draft-123"
+
 def _create_reply_suggestion(client: TestClient, create_org, with_gmail: bool = False):
     organization = create_org()
     ticket_response = client.post(
@@ -142,6 +183,7 @@ def _create_reply_suggestion(client: TestClient, create_org, with_gmail: bool = 
         ticket = db.scalar(select(Ticket).where(Ticket.id == ticket_id))
         gmail_connection_id = None
         if with_gmail:
+            settings.encryption_key = "test-encryption-key"
             connection = GmailConnection(
                 organization_id=organization["id"],
                 connected_by_user_id="user-owner",

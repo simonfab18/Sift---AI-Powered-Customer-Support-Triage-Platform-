@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthenticatedUser
-from app.core.encryption import decrypt_secret
 from app.integrations.gmail.client import create_gmail_draft, refresh_gmail_access_token
 from app.models.ai_triage_result import AITriageResult
 from app.models.gmail_connection import GmailConnection
@@ -16,6 +15,9 @@ from app.models.reply_approval import ReplyApproval, ReplyApprovalStatus
 from app.models.ticket import TicketStatus
 from app.schemas.reply_approval import ReplyApprovalUpdate
 from app.services.audit_log_service import create_audit_log
+from app.services.gmail_token_service import refresh_connection_access_token
+from app.services.pilot_control_service import ensure_draft_creation_enabled
+from app.services.ticket_lifecycle_service import ensure_ticket_allows_draft, transition_ticket_status
 from app.services.ticket_service import get_ticket_or_404, write_ticket_event
 
 
@@ -66,12 +68,24 @@ def update_reply_approval(
     actor: AuthenticatedUser,
     payload: ReplyApprovalUpdate,
 ) -> ReplyApproval:
-    get_ticket_or_404(db, organization_id, ticket_id, actor)
+    ticket = get_ticket_or_404(db, organization_id, ticket_id, actor)
     approval = _get_approval_or_404(db, organization_id, ticket_id, approval_id)
-    if approval.status != ReplyApprovalStatus.PENDING.value:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reply suggestion is already finalized")
-
+    if approval.status == ReplyApprovalStatus.DRAFT_CREATED.value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Draft-created reply cannot be edited")
+    if approval.final_reply != payload.final_reply:
+        approval.reply_version += 1
     approval.final_reply = payload.final_reply
+    approval.status = ReplyApprovalStatus.PENDING.value
+    approval.approved_by_user_id = None
+    approval.approved_at = None
+    approval.approved_reply_version = None
+    write_ticket_event(
+        db,
+        ticket,
+        actor,
+        "ticket.reply_approval_edited",
+        {"reply_approval_id": approval.id, "reply_version": approval.reply_version},
+    )
     db.commit()
     db.refresh(approval)
     return approval
@@ -85,18 +99,21 @@ def approve_reply_suggestion(
     payload: ReplyApprovalUpdate | None = None,
 ) -> ReplyApproval:
     approval = _get_suggestion_or_404(db, organization_id, suggestion_id)
-    get_ticket_or_404(db, organization_id, approval.ticket_id, actor)
+    ticket = get_ticket_or_404(db, organization_id, approval.ticket_id, actor)
     if approval.status == ReplyApprovalStatus.DRAFT_CREATED.value:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reply suggestion already has a Gmail draft")
 
     final_reply = payload.final_reply if payload else approval.final_reply or approval.suggested_reply
     if not final_reply.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Final reply is required")
+    if approval.final_reply != final_reply:
+        approval.reply_version += 1
 
     approval.final_reply = final_reply
     approval.status = ReplyApprovalStatus.APPROVED.value
     approval.approved_by_user_id = actor.id
     approval.approved_at = datetime.now(UTC)
+    approval.approved_reply_version = approval.reply_version
     create_audit_log(
         db,
         organization_id=organization_id,
@@ -104,7 +121,18 @@ def approve_reply_suggestion(
         action="reply_suggestion.approved",
         resource_type="reply_approval",
         resource_id=approval.id,
-        metadata={"ticket_id": approval.ticket_id, "ai_triage_result_id": approval.ai_triage_result_id},
+        metadata={
+            "ticket_id": approval.ticket_id,
+            "ai_triage_result_id": approval.ai_triage_result_id,
+            "reply_version": approval.reply_version,
+        },
+    )
+    write_ticket_event(
+        db,
+        ticket,
+        actor,
+        "ticket.reply_approval_approved",
+        {"reply_approval_id": approval.id, "reply_version": approval.reply_version},
     )
     db.commit()
     db.refresh(approval)
@@ -131,12 +159,23 @@ async def create_gmail_draft_from_approved_suggestion(
 ) -> tuple[ReplyApproval, GmailDraft]:
     approval = _get_suggestion_or_404(db, organization_id, suggestion_id)
     ticket = get_ticket_or_404(db, organization_id, approval.ticket_id, actor)
-    if approval.status != ReplyApprovalStatus.APPROVED.value:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reply suggestion must be approved first")
-
+    ensure_draft_creation_enabled(db, organization_id)
     existing_draft = get_gmail_draft_for_ticket(db, organization_id, ticket.id, actor, raise_not_found=False)
     if existing_draft is not None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gmail draft already exists for this ticket")
+        if approval.status != ReplyApprovalStatus.DRAFT_CREATED.value:
+            approval.status = ReplyApprovalStatus.DRAFT_CREATED.value
+            approval.gmail_draft_id = existing_draft.gmail_draft_id
+            db.commit()
+            db.refresh(approval)
+        return approval, existing_draft
+
+    ensure_ticket_allows_draft(ticket)
+    if approval.status != ReplyApprovalStatus.APPROVED.value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reply suggestion must be approved first")
+    if approval.approved_reply_version is not None and approval.approved_reply_version != approval.reply_version:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reply approval is stale and must be approved again")
+    if approval.approved_reply_version is None:
+        approval.approved_reply_version = approval.reply_version
 
     if not ticket.gmail_connection_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket is not linked to a Gmail connection")
@@ -146,8 +185,7 @@ async def create_gmail_draft_from_approved_suggestion(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Active Gmail connection not found")
 
     final_reply = approval.final_reply or approval.suggested_reply
-    refresh_token = decrypt_secret(connection.encrypted_refresh_token)
-    access_token, expires_at = await refresh_gmail_access_token(refresh_token)
+    access_token, expires_at = await refresh_connection_access_token(db, connection, refresh_func=refresh_gmail_access_token)
     raw_message = build_reply_raw_message(
         to_email=ticket.customer.email,
         subject=ticket.subject,
@@ -176,14 +214,14 @@ async def create_gmail_draft_from_approved_suggestion(
     connection.access_token_expires_at = expires_at
     approval.status = ReplyApprovalStatus.DRAFT_CREATED.value
     approval.gmail_draft_id = draft_id
-    ticket.status = TicketStatus.DRAFT_CREATED.value
+    transition_ticket_status(ticket, TicketStatus.DRAFT_CREATED.value)
 
     write_ticket_event(
         db,
         ticket,
         actor,
         "ticket.reply_draft_created",
-        {"reply_suggestion_id": approval.id, "gmail_draft_id": draft_id},
+        {"reply_suggestion_id": approval.id, "gmail_draft_id": draft_id, "reply_version": approval.reply_version},
     )
     create_audit_log(
         db,
@@ -197,6 +235,7 @@ async def create_gmail_draft_from_approved_suggestion(
             "reply_suggestion_id": approval.id,
             "gmail_draft_id": draft_id,
             "gmail_thread_id": ticket.gmail_thread_id,
+            "reply_version": approval.reply_version,
         },
     )
     db.commit()

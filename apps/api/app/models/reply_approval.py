@@ -1,8 +1,8 @@
-﻿from datetime import UTC, datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -29,6 +29,8 @@ class ReplyApproval(Base):
     suggested_reply: Mapped[str] = mapped_column(Text, nullable=False)
     final_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default=ReplyApprovalStatus.PENDING.value, index=True)
+    reply_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    approved_reply_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     approved_by_user_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     gmail_draft_id: Mapped[str | None] = mapped_column(String(160), nullable=True)

@@ -4,11 +4,41 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import AuthenticatedUser
 from app.models.customer import Customer
-from app.models.member import MemberStatus, OrganizationMember
+from app.models.gmail_connection import GmailConnection
+from app.models.member import MemberRole, MemberStatus, OrganizationMember
+from app.models.reply_suggestion import ReplySuggestion
 from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketStatus
 from app.models.ticket_event import TicketEvent
 from app.schemas.ticket import TicketAssign, TicketCreate, TicketListItem, TicketUpdate
-from app.services.rbac_service import require_membership
+from app.services.rbac_service import require_membership, require_role
+from app.services.routing_rule_service import apply_routing_rules
+from app.services.sla_service import PAUSED_STATUSES, SLA_PAUSED, initialize_ticket_sla, refresh_ticket_sla_status
+from app.services.workspace_settings_service import get_or_create_workspace_settings
+from app.services.ticket_lifecycle_service import transition_ticket_status
+
+
+
+def _latest_reply_suggestions_by_ticket(db: Session, organization_id: str, ticket_ids: set[str]) -> dict[str, ReplySuggestion]:
+    if not ticket_ids:
+        return {}
+    suggestions = list(
+        db.scalars(
+            select(ReplySuggestion)
+            .where(ReplySuggestion.organization_id == organization_id, ReplySuggestion.ticket_id.in_(ticket_ids))
+            .order_by(ReplySuggestion.ticket_id.asc(), ReplySuggestion.created_at.desc())
+        )
+    )
+    latest: dict[str, ReplySuggestion] = {}
+    for suggestion in suggestions:
+        latest.setdefault(suggestion.ticket_id, suggestion)
+    return latest
+
+
+def _attach_latest_reply_state(db: Session, organization_id: str, ticket: Ticket) -> Ticket:
+    latest = _latest_reply_suggestions_by_ticket(db, organization_id, {ticket.id}).get(ticket.id)
+    setattr(ticket, "latest_reply_status", latest.status if latest is not None else None)
+    setattr(ticket, "latest_reply_gmail_draft_id", latest.gmail_draft_id if latest is not None else None)
+    return ticket
 
 
 def write_ticket_event(
@@ -78,8 +108,17 @@ def create_ticket(
     )
     db.add(ticket)
     db.flush()
+    settings = get_or_create_workspace_settings(db, organization_id)
+    initialize_ticket_sla(ticket, settings)
+    apply_routing_rules(db, ticket)
     write_ticket_event(db, ticket, actor, "ticket.created", {"source": "manual"})
     db.commit()
+    try:
+        from app.services.job_queue_service import enqueue_ticket_triage
+
+        enqueue_ticket_triage(db, organization_id, ticket.id, actor, raise_on_enqueue_error=False)
+    except Exception:
+        pass
     return get_ticket_or_404(db, organization_id, ticket.id, actor)
 
 
@@ -89,6 +128,11 @@ def list_tickets(
     actor: AuthenticatedUser,
     status_filter: str | None = None,
     priority_filter: str | None = None,
+    sla_status_filter: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    gmail_connection_id_filter: str | None = None,
+    gmail_inbox_type_filter: str | None = None,
 ) -> list[TicketListItem]:
     require_membership(db, organization_id, actor)
     priority_rank = case(
@@ -100,9 +144,9 @@ def list_tickets(
     )
     statement = (
         select(Ticket)
-        .options(selectinload(Ticket.customer))
+        .options(selectinload(Ticket.customer), selectinload(Ticket.attachments))
         .where(Ticket.organization_id == organization_id)
-        .order_by(priority_rank.asc(), Ticket.received_at.desc())
+        .order_by(priority_rank.asc(), Ticket.received_at.desc(), Ticket.id.asc())
     )
     if status_filter and status_filter != "all":
         statement = statement.where(Ticket.status == status_filter)
@@ -110,13 +154,43 @@ def list_tickets(
         statement = statement.where(Ticket.status.notin_([TicketStatus.RESOLVED.value, TicketStatus.SPAM.value]))
     if priority_filter:
         statement = statement.where(Ticket.priority == priority_filter)
+    if sla_status_filter:
+        if sla_status_filter == SLA_PAUSED:
+            statement = statement.where(Ticket.status.in_(PAUSED_STATUSES))
+        else:
+            statement = statement.where(Ticket.sla_status == sla_status_filter)
+    if gmail_connection_id_filter:
+        statement = statement.where(Ticket.gmail_connection_id == gmail_connection_id_filter)
+    if gmail_inbox_type_filter and gmail_inbox_type_filter != "all":
+        statement = statement.join(GmailConnection, Ticket.gmail_connection_id == GmailConnection.id).where(
+            GmailConnection.organization_id == organization_id,
+            GmailConnection.inbox_type == gmail_inbox_type_filter,
+        )
 
-    tickets = db.scalars(statement).all()
+    tickets = db.scalars(statement.limit(limit).offset(offset)).all()
+    latest_reply_by_ticket = _latest_reply_suggestions_by_ticket(db, organization_id, {ticket.id for ticket in tickets})
+    connection_ids = {ticket.gmail_connection_id for ticket in tickets if ticket.gmail_connection_id}
+    connections = {}
+    if connection_ids:
+        connections = {
+            connection.id: connection
+            for connection in db.scalars(
+                select(GmailConnection).where(
+                    GmailConnection.organization_id == organization_id,
+                    GmailConnection.id.in_(connection_ids),
+                )
+            )
+        }
     return [
         TicketListItem(
             id=ticket.id,
             customer_email=ticket.customer.email,
             customer_name=ticket.customer.name,
+            gmail_connection_id=ticket.gmail_connection_id,
+            gmail_connection_email=connections[ticket.gmail_connection_id].gmail_email if ticket.gmail_connection_id in connections else None,
+            gmail_connection_display_name=connections[ticket.gmail_connection_id].display_name if ticket.gmail_connection_id in connections else None,
+            gmail_connection_inbox_type=connections[ticket.gmail_connection_id].inbox_type if ticket.gmail_connection_id in connections else None,
+            gmail_connection_shared_address=connections[ticket.gmail_connection_id].shared_address if ticket.gmail_connection_id in connections else None,
             gmail_message_id=ticket.gmail_message_id,
             gmail_thread_id=ticket.gmail_thread_id,
             subject=ticket.subject,
@@ -125,6 +199,13 @@ def list_tickets(
             priority=ticket.priority,
             sentiment=ticket.sentiment,
             assigned_to_user_id=ticket.assigned_to_user_id,
+            triage_status=ticket.triage_status,
+            triage_error_message=ticket.triage_error_message,
+            first_review_due_at=ticket.first_review_due_at,
+            resolution_due_at=ticket.resolution_due_at,
+            sla_status=refresh_ticket_sla_status(ticket),
+            latest_reply_status=latest_reply_by_ticket[ticket.id].status if ticket.id in latest_reply_by_ticket else None,
+            latest_reply_gmail_draft_id=latest_reply_by_ticket[ticket.id].gmail_draft_id if ticket.id in latest_reply_by_ticket else None,
             received_at=ticket.received_at,
             updated_at=ticket.updated_at,
         )
@@ -141,12 +222,13 @@ def get_ticket_or_404(
     require_membership(db, organization_id, actor)
     ticket = db.scalar(
         select(Ticket)
-        .options(selectinload(Ticket.customer))
+        .options(selectinload(Ticket.customer), selectinload(Ticket.attachments))
         .where(Ticket.organization_id == organization_id, Ticket.id == ticket_id)
     )
     if ticket is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
-    return ticket
+    refresh_ticket_sla_status(ticket)
+    return _attach_latest_reply_state(db, organization_id, ticket)
 
 
 def update_ticket(
@@ -165,10 +247,14 @@ def update_ticket(
         previous_value = getattr(ticket, field)
         if previous_value != next_value:
             changes[field] = {"from": previous_value, "to": next_value}
-            setattr(ticket, field, next_value)
+            if field == "status":
+                transition_ticket_status(ticket, next_value)
+            else:
+                setattr(ticket, field, next_value)
 
     if changes:
         write_ticket_event(db, ticket, actor, "ticket.updated", {"changes": changes})
+    refresh_ticket_sla_status(ticket)
     db.commit()
     return get_ticket_or_404(db, organization_id, ticket_id, actor)
 
@@ -180,6 +266,7 @@ def assign_ticket(
     actor: AuthenticatedUser,
     payload: TicketAssign,
 ) -> Ticket:
+    require_role(db, organization_id, actor, {MemberRole.OWNER, MemberRole.ADMIN})
     ticket = get_ticket_or_404(db, organization_id, ticket_id, actor)
     assigned_to_user_id = payload.assigned_to_user_id
 
@@ -210,7 +297,7 @@ def assign_ticket(
 def mark_ticket_spam(db: Session, organization_id: str, ticket_id: str, actor: AuthenticatedUser) -> Ticket:
     ticket = get_ticket_or_404(db, organization_id, ticket_id, actor)
     previous_status = ticket.status
-    ticket.status = TicketStatus.SPAM.value
+    transition_ticket_status(ticket, TicketStatus.SPAM.value)
     ticket.category = TicketCategory.SPAM.value
     write_ticket_event(
         db,
@@ -219,6 +306,7 @@ def mark_ticket_spam(db: Session, organization_id: str, ticket_id: str, actor: A
         "ticket.marked_spam",
         {"previous_status": previous_status},
     )
+    refresh_ticket_sla_status(ticket)
     db.commit()
     return get_ticket_or_404(db, organization_id, ticket_id, actor)
 
@@ -226,7 +314,7 @@ def mark_ticket_spam(db: Session, organization_id: str, ticket_id: str, actor: A
 def resolve_ticket(db: Session, organization_id: str, ticket_id: str, actor: AuthenticatedUser) -> Ticket:
     ticket = get_ticket_or_404(db, organization_id, ticket_id, actor)
     previous_status = ticket.status
-    ticket.status = TicketStatus.RESOLVED.value
+    transition_ticket_status(ticket, TicketStatus.RESOLVED.value)
     write_ticket_event(
         db,
         ticket,
@@ -234,6 +322,7 @@ def resolve_ticket(db: Session, organization_id: str, ticket_id: str, actor: Aut
         "ticket.resolved",
         {"previous_status": previous_status},
     )
+    refresh_ticket_sla_status(ticket)
     db.commit()
     return get_ticket_or_404(db, organization_id, ticket_id, actor)
 
@@ -252,4 +341,3 @@ def list_ticket_events(
             .order_by(TicketEvent.created_at.asc())
         )
     )
-

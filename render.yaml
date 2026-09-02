@@ -5,6 +5,7 @@ services:
     rootDir: apps/api
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
+    preDeployCommand: alembic upgrade head
     envVars:
       - key: APP_ENV
         value: staging
@@ -12,23 +13,62 @@ services:
         value: "false"
       - key: API_CORS_ORIGINS
         value: https://ai-customer-support-triage-response.vercel.app
-      - key: CELERY_TASK_ALWAYS_EAGER
+      - key: FRONTEND_ORIGIN
+        value: https://ai-customer-support-triage-response.vercel.app
+      - key: LOGGING_LEVEL
+        value: INFO
+      - key: SERVICE_NAME
+        value: api
+      - key: RELEASE_VERSION
+        value: 0.1.0
+      - key: OPERATIONS_ALERT_OWNER
+        value: platform
+      - key: OPERATIONS_INTERNAL_TOKEN
+        sync: false
+      - key: OPERATIONS_RUNBOOK_BASE_URL
+        sync: false
+      - key: OPERATIONS_FAILURE_ALERT_THRESHOLD
+        value: "3"
+      - key: RATE_LIMIT_ENABLED
         value: "true"
+      - key: RATE_LIMIT_DEFAULT_LIMIT
+        value: "120"
+      - key: RATE_LIMIT_DEFAULT_WINDOW_SECONDS
+        value: "60"
+      - key: RATE_LIMIT_SENSITIVE_LIMIT
+        value: "10"
+      - key: RATE_LIMIT_SENSITIVE_WINDOW_SECONDS
+        value: "60"
+      - key: MAX_REQUEST_BODY_BYTES
+        value: "1048576"
+      - key: ENCRYPTION_KEY_VERSION
+        value: "1"
+      - key: PILOT_REQUIRE_ALLOWLIST
+        value: "false"
+      - key: PILOT_ALLOWLISTED_ORGANIZATION_IDS
+        sync: false
+      - key: PILOT_SYNC_ENABLED
+        value: "true"
+      - key: PILOT_AUTO_TRIAGE_ENABLED
+        value: "true"
+      - key: PILOT_DRAFT_CREATION_ENABLED
+        value: "true"
+      - key: ERROR_TRACKING_DSN
+        sync: false
+      - key: SYNC_FALLBACK_INTERVAL_MINUTES
+        value: "15"
+      - key: WATCH_RENEWAL_SCHEDULE
+        value: "0 3 * * *"
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: support-triage-redis
-          property: connectionString
       - key: ENCRYPTION_KEY
         sync: false
       - key: SUPABASE_URL
-        value: https://gvpftpnyqeancxugyxqf.supabase.co
+        sync: false
       - key: SUPABASE_PUBLISHABLE_KEY
-        value: sb_publishable_zwWWL_oXWiK41Xj_e0-AtA_R0gspHmC
+        sync: false
       - key: SUPABASE_JWKS_URL
-        value: https://gvpftpnyqeancxugyxqf.supabase.co/auth/v1/.well-known/jwks.json
+        sync: false
       - key: SUPABASE_SECRET_KEY
         sync: false
       - key: GOOGLE_CLIENT_ID
@@ -37,59 +77,37 @@ services:
         sync: false
       - key: GOOGLE_REDIRECT_URI
         value: https://ai-customer-support-triage-response.onrender.com/v1/gmail/oauth/callback
+      - key: GOOGLE_CLOUD_PROJECT_ID
+        value: customer-support-triage-501408
+      - key: GOOGLE_CLOUD_REGION
+        value: asia-southeast1
+      - key: GOOGLE_PUBSUB_TOPIC
+        value: projects/customer-support-triage-501408/topics/gmail-notifications
+      - key: GOOGLE_PUBSUB_SUBSCRIPTION
+        value: gmail-notifications-sub
+      - key: PUBSUB_EXPECTED_AUDIENCE
+        value: https://ai-customer-support-triage-response.onrender.com/v1/webhooks/google/gmail
+      - key: PUBSUB_SERVICE_ACCOUNT_EMAIL
+        value: pub-sub-push-invoker@customer-support-triage-501408.iam.gserviceaccount.com
+      - key: TASK_QUEUE_BACKEND
+        value: pubsub
+      - key: TASK_OIDC_EXPECTED_AUDIENCE
+        value: https://ai-customer-support-triage-response.onrender.com
+      - key: TASK_PUBSUB_SERVICE_ACCOUNT_EMAIL
+        value: support-triage-staging-pubsub-invoker@customer-support-triage-501408.iam.gserviceaccount.com
+      - key: SCHEDULER_SERVICE_ACCOUNT_EMAIL
+        value: support-triage-staging-scheduler-invoker@customer-support-triage-501408.iam.gserviceaccount.com
+      - key: TASK_PUBSUB_GMAIL_IMPORT_TOPIC
+        value: support-triage-staging-gmail-import
+      - key: TASK_PUBSUB_GMAIL_HISTORY_SYNC_TOPIC
+        value: support-triage-staging-gmail-history-sync
+      - key: TASK_PUBSUB_AI_TRIAGE_TOPIC
+        value: support-triage-staging-ai-triage
+      - key: TASK_PUBSUB_WATCH_RENEWAL_TOPIC
+        value: support-triage-staging-watch-renewal
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.5-flash
       - key: AUTH_ALLOW_UNVERIFIED_JWT
         value: "false"
-
-  - type: worker
-    name: ai-customer-support-triage-response-worker
-    env: docker
-    rootDir: apps/api
-    dockerfilePath: ./Dockerfile
-    dockerCommand: celery -A app.worker.celery_app.celery_app worker --loglevel=info
-    envVars:
-      - key: APP_ENV
-        value: staging
-      - key: DEBUG
-        value: "false"
-      - key: API_CORS_ORIGINS
-        value: https://ai-customer-support-triage-response.vercel.app
-      - key: CELERY_TASK_ALWAYS_EAGER
-        value: "false"
-      - key: DATABASE_URL
-        sync: false
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: support-triage-redis
-          property: connectionString
-      - key: ENCRYPTION_KEY
-        sync: false
-      - key: SUPABASE_URL
-        value: https://gvpftpnyqeancxugyxqf.supabase.co
-      - key: SUPABASE_PUBLISHABLE_KEY
-        value: sb_publishable_zwWWL_oXWiK41Xj_e0-AtA_R0gspHmC
-      - key: SUPABASE_JWKS_URL
-        value: https://gvpftpnyqeancxugyxqf.supabase.co/auth/v1/.well-known/jwks.json
-      - key: SUPABASE_SECRET_KEY
-        sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: GOOGLE_REDIRECT_URI
-        value: https://ai-customer-support-triage-response.onrender.com/v1/gmail/oauth/callback
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GEMINI_MODEL
-        value: gemini-3.5-flash
-      - key: AUTH_ALLOW_UNVERIFIED_JWT
-        value: "false"
-
-  - type: redis
-    name: support-triage-redis
-    ipAllowList: []
-

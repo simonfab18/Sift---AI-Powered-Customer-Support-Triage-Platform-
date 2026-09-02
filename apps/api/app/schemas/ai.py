@@ -25,6 +25,10 @@ class AITriageResultRead(BaseModel):
     ticket_id: str
     model_provider: str
     model_name: str
+    prompt_version: str
+    schema_version: str
+    latency_ms: int | None = None
+    job_run_id: str | None = None
     category: str
     priority: str
     sentiment: str
@@ -35,4 +39,39 @@ class AITriageResultRead(BaseModel):
     reasoning: str
     requires_human_review: bool
     validation_status: str
+    knowledge_sources: list[dict] = []
     created_at: datetime
+
+
+class AITriageJobRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    organization_id: str
+    job_type: str
+    status: str
+    error_message: str | None = None
+    job_metadata: dict
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime
+
+class AITriageInboxUsageRead(BaseModel):
+    gmail_connection_id: str | None = None
+    gmail_email: str | None = None
+    used: int
+
+
+class AITriageUsageRead(BaseModel):
+    date: str
+    timezone: str = "UTC"
+    daily_limit: int
+    used: int
+    remaining: int | None = None
+    paused_for_today: bool
+    global_daily_limit: int
+    global_used: int
+    global_remaining: int | None = None
+    global_paused_for_today: bool
+    resets_at: datetime
+    per_inbox: list[AITriageInboxUsageRead]

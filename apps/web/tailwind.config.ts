@@ -11,14 +11,17 @@ const config: Config = {
       },
       colors: {
         brand: {
-          600: "#0d9488",
-          700: "#0f766e",
+          50: "#f4f5ff",
+          100: "#e6e8ff",
+          600: "#4f46e5",
+          700: "#4338ca",
+          900: "#17134f",
         },
         urgency: {
-          critical: "#f43f5e",
-          high: "#f59e0b",
-          medium: "#3b82f6",
-          low: "#cbd5e1",
+          critical: "#8f8aa8",
+          high: "#aaa4be",
+          medium: "#b8b3c7",
+          low: "#d9d5df",
         },
       },
     },
@@ -27,3 +30,5 @@ const config: Config = {
 };
 
 export default config;
+
+

@@ -2,8 +2,11 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.models.ticket import TicketCategory, TicketPriority, TicketSentiment
+from app.integrations.gemini.client import GeminiQuotaExceededError
+from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketSentiment, TicketTriageStatus
+from app.integrations.gemini.prompts import build_triage_prompt
 from app.schemas.ai import TriageOutput
+from app.services.ai_triage_service import apply_triage_policy_guardrails
 
 
 @pytest.fixture
@@ -131,6 +134,30 @@ def test_triage_requires_organization_membership(
     assert response.status_code == 403
 
 
+def test_manual_triage_quota_failure_returns_retryable_api_error(
+    client: TestClient,
+    ticket: tuple[dict, dict],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    organization, created_ticket = ticket
+
+    async def fake_classify(prompt: str):
+        raise GeminiQuotaExceededError("Gemini quota exceeded", retry_after_seconds=61)
+
+    monkeypatch.setattr("app.services.ai_triage_service.classify_ticket_with_gemini", fake_classify)
+
+    response = client.post(f"/v1/orgs/{organization['id']}/tickets/{created_ticket['id']}/triage")
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Gemini quota exceeded"
+    assert response.headers["retry-after"] == "61"
+
+    with client.session_factory() as db:
+        stored_ticket = db.get(Ticket, created_ticket["id"])
+
+    assert stored_ticket.triage_status == TicketTriageStatus.FAILED.value
+    assert stored_ticket.triage_error_message == "Gemini quota exceeded"
+    assert stored_ticket.active_triage_job_id is None
 
 def test_triage_output_requires_confidence_and_reasoning() -> None:
     with pytest.raises(ValidationError):
@@ -162,3 +189,56 @@ def test_triage_output_rejects_invalid_confidence_score() -> None:
                 "requires_human_review": True,
             }
         )
+
+def test_triage_prompt_discourages_other_and_medium_defaults() -> None:
+    prompt = build_triage_prompt(
+        customer_name=None,
+        customer_email="customer@example.com",
+        subject="I was charged twice",
+        message="Please refund the duplicate charge on my order.",
+    )
+
+    assert "Do not use category other when any named category is a reasonable fit" in prompt
+    assert "Avoid defaulting to medium" in prompt
+    assert "charged twice" in prompt
+    assert "category refund, priority high" in prompt
+
+
+def test_triage_prompt_contains_common_gmail_workflow_examples() -> None:
+    prompt = build_triage_prompt(
+        customer_name="Casey",
+        customer_email="casey@example.com",
+        subject="Package broken",
+        message="The item arrived broken and I need a replacement.",
+    )
+
+    assert "category order_status" in prompt
+    assert "category damaged_item" in prompt
+    assert "category account_access" in prompt
+    assert "Where is my order?" in prompt
+    assert "The item arrived broken" in prompt
+
+
+def test_triage_policy_guardrails_stabilize_urgent_refund_and_account_access() -> None:
+    output = TriageOutput(
+        category=TicketCategory.OTHER,
+        priority=TicketPriority.MEDIUM,
+        sentiment=TicketSentiment.NEGATIVE,
+        summary="Customer needs help.",
+        suggested_action="Review the case.",
+        draft_reply="Thanks for contacting us.",
+        confidence_score=76,
+        reasoning="Initial model output was generic.",
+        requires_human_review=False,
+    )
+
+    adjustments = apply_triage_policy_guardrails(
+        output,
+        subject="Urgent refund request - double charged and account locked",
+        message="I was double charged and now my account is locked. Please help right now.",
+    )
+
+    assert output.category == TicketCategory.REFUND
+    assert output.priority == TicketPriority.CRITICAL
+    assert output.requires_human_review is True
+    assert "priority raised to critical for urgent money plus account-access risk" in adjustments

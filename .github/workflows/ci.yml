@@ -33,7 +33,10 @@ jobs:
           DATABASE_URL: sqlite:///./ci_migration.db
           ENCRYPTION_KEY: ci-only-not-secret
           AUTH_ALLOW_UNVERIFIED_JWT: "true"
-        run: alembic upgrade head
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
 
       - name: Run backend tests
         env:
@@ -62,17 +65,39 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint frontend
+        run: pnpm run lint:web
+
       - name: Typecheck frontend
         run: pnpm run typecheck:web
 
       - name: Build frontend
         env:
           NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
-          NEXT_PUBLIC_SUPABASE_URL: https://gvpftpnyqeancxugyxqf.supabase.co
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_zwWWL_oXWiK41Xj_e0-AtA_R0gspHmC
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
         run: pnpm run build:web
 
-  docker:
+  containers:
+    name: Container Images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -f apps/api/Dockerfile apps/api
+
+      - name: Build frontend image
+        run: |
+          docker build \
+            -f apps/web/Dockerfile \
+            --build-arg NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci_placeholder \
+            .
+
+  docker-compose:
     name: Docker Compose
     runs-on: ubuntu-latest
     steps:

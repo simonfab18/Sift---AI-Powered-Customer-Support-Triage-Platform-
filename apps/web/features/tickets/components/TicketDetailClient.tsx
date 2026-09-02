@@ -1,36 +1,312 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/Button";
-import { StatusBadge, UrgencyBadge } from "@/components/ui/Badges";
-import { getStoredOrganizationId } from "@/features/organizations/components/OrganizationManager";
+import { UrgencyBadge } from "@/components/ui/Badges";
+import { getStoredOrganizationId, setStoredOrganizationId } from "@/features/organizations/components/OrganizationManager";
 import { createClient } from "@/lib/supabase/client";
+import { getMe } from "@/lib/api-client";
 import {
+  acquireCollaborationLock,
   approveReplySuggestion,
+  createResponseTemplate,
   createGmailDraftFromSuggestion,
+  createInternalNote,
+  getInternalNoteEdits,
+  getInternalNoteMentions,
+  getInternalNotes,
   getReplySuggestions,
+  getResponseTemplates,
+  getWorkspaceSettings,
   getTicket,
+  getTicketAttachmentDownloadUrl,
+  getTicketRoutingExecutions,
   getTicketEvents,
   getTicketTriageResults,
+  insertResponseTemplate,
   rejectReplySuggestion,
+  releaseCollaborationLock,
   runTicketTriage,
+  TicketApiError,
+  sendGmailReplyFromSuggestion,
+  storeTicketAttachment,
+  updateInternalNote,
   updateReplySuggestion,
+  updateResponseTemplate,
 } from "../api";
-import type { AITriageResult, ReplySuggestion, Ticket, TicketEvent } from "../types";
+import type {
+  AITriageResult,
+  CollaborationLock,
+  InternalNote,
+  InternalNoteEdit,
+  InternalNoteMention,
+  ReplySuggestion,
+  ResponseTemplate,
+  RoutingRuleExecution,
+  Ticket,
+  TicketEvent,
+} from "../types";
 
 function displayStatus(status: string) {
   return status.replaceAll("_", " ");
 }
 
-export function TicketDetailClient({ ticketId }: { ticketId: string }) {
+function formatAttachmentSize(sizeBytes: number | null) {
+  if (sizeBytes === null) return "Unknown size";
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let size = sizeBytes / 1024;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function attachmentStatusClass(status: string) {
+  if (status.startsWith("blocked")) return "border-[#d8d2e4] bg-white/50 text-[#6f6174]";
+  if (status === "stored" || status === "clean" || status === "metadata_only") return "border-slate-200 bg-slate-100 text-slate-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function replySubject(subject: string) {
+  return subject.toLowerCase().startsWith("re:") ? subject : `Re: ${subject}`;
+}
+
+function displayAttachmentStatus(status: string) {
+  return status.replaceAll("_", " ");
+}
+
+function formatRetryAfter(seconds: number | null) {
+  if (!seconds || seconds <= 0) return null;
+  if (seconds < 60) return `${seconds} seconds`;
+  const minutes = Math.ceil(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+function triageStatusTone(status?: string | null) {
+  if (status === "triaged") return "border-slate-200 bg-slate-100 text-slate-700";
+  if (status === "queued" || status === "triaging") return "border-[#ddd7e6] bg-white/50 text-[#655f73]";
+  if (status === "triage_failed") return "border-[#ddd7e6] bg-white/50 text-[#746d80]";
+  if (status === "not_queued") return "border-slate-200 bg-slate-50 text-slate-600";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function triageStatusLabel(status?: string | null) {
+  if (!status) return "Not queued";
+  if (status === "triage_failed") return "Needs retry";
+  return status.replaceAll("_", " ");
+}
+
+function formatDue(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function formatReplyVersionTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown time";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function slaTarget(ticket: Ticket) {
+  const targets = [
+    { label: "First review", value: ticket.first_review_due_at },
+    { label: "Resolution", value: ticket.resolution_due_at },
+  ]
+    .map((target) => ({ ...target, date: target.value ? new Date(target.value) : null }))
+    .filter((target): target is { label: string; value: string; date: Date } => Boolean(target.value && target.date && !Number.isNaN(target.date.getTime())))
+    .sort((first, second) => first.date.getTime() - second.date.getTime());
+  return targets[0] ?? null;
+}
+
+function relativeDue(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const diffMs = date.getTime() - Date.now();
+  const absMinutes = Math.max(1, Math.round(Math.abs(diffMs) / 60000));
+  const hours = Math.floor(absMinutes / 60);
+  const minutes = absMinutes % 60;
+  const compact = hours > 0 ? `${hours}h${minutes ? ` ${minutes}m` : ""}` : `${minutes}m`;
+  return diffMs < 0 ? `overdue by ${compact}` : `due in ${compact}`;
+}
+
+function slaLabel(ticket: Ticket) {
+  if (ticket.sla_status === "paused") return "SLA paused";
+  const target = slaTarget(ticket);
+  if (!target) return `SLA ${ticket.sla_status.replaceAll("_", " ")}`;
+  if (ticket.sla_status === "breached") return `${target.label} breached`;
+  if (ticket.sla_status === "warning") return `${target.label} at risk`;
+  return `${target.label} on track`;
+}
+
+function slaTone(status: string) {
+  if (status === "breached") return "border-[#d8d2e4] bg-white/50 text-[#6f6174]";
+  if (status === "warning") return "border-[#ddd7e6] bg-white/50 text-[#746d80]";
+  if (status === "paused") return "border-slate-200 bg-slate-100 text-slate-600";
+  return "border-slate-200 bg-slate-100 text-slate-700";
+}
+function slaExplanation(ticket: Ticket) {
+  if (ticket.sla_status === "paused") return "Timer paused because the ticket is pending, resolved, or spam.";
+  const target = slaTarget(ticket);
+  if (!target) return "No SLA target set.";
+  const due = formatDue(target.value);
+  const relative = relativeDue(target.value);
+  if (ticket.sla_status === "breached") return `${target.label} was due ${due}${relative ? ` (${relative})` : ""}.`;
+  if (ticket.sla_status === "warning") return `${target.label} is due soon: ${due}${relative ? ` (${relative})` : ""}.`;
+  return `${target.label} due ${due}${relative ? ` (${relative})` : ""}.`;
+}
+
+function workflowStatus(ticket: Ticket, latestSuggestion?: ReplySuggestion) {
+  if (ticket.status === "resolved") {
+    return { label: "Resolved", detail: latestSuggestion?.gmail_draft_id ? `Gmail draft exists: ${latestSuggestion.gmail_draft_id}` : null };
+  }
+  if (ticket.status === "spam") {
+    return { label: "Spam", detail: latestSuggestion?.gmail_draft_id ? `Gmail draft exists: ${latestSuggestion.gmail_draft_id}` : null };
+  }
+  if (latestSuggestion?.status === "approved" && !latestSuggestion.gmail_draft_id) {
+    return { label: "Reply approved", detail: "Draft not created yet. Create a Gmail draft when ready." };
+  }
+  if (latestSuggestion?.status === "draft_created" || latestSuggestion?.gmail_draft_id || ticket.status === "draft_created") {
+    return { label: "Draft created", detail: latestSuggestion?.gmail_draft_id ? `Gmail draft ${latestSuggestion.gmail_draft_id}` : "Gmail draft created." };
+  }
+  return { label: displayStatus(ticket.status), detail: null as string | null };
+}
+
+function latestTriageChange(events: TicketEvent[]) {
+  const event = [...events].reverse().find((item) => item.event_type === "ticket.ai_triaged" && item.event_metadata?.changed === true);
+  if (!event) return null;
+  const previousPriority = String(event.event_metadata.previous_priority ?? "unknown").replaceAll("_", " ");
+  const newPriority = String(event.event_metadata.new_priority ?? "unknown").replaceAll("_", " ");
+  const previousCategory = String(event.event_metadata.previous_category ?? "unknown").replaceAll("_", " ");
+  const newCategory = String(event.event_metadata.new_category ?? "unknown").replaceAll("_", " ");
+  const adjustments = Array.isArray(event.event_metadata.policy_adjustments) ? event.event_metadata.policy_adjustments.join("; ") : null;
+  return { previousPriority, newPriority, previousCategory, newCategory, adjustments };
+}
+
+const eventLabels: Record<string, string> = {
+  "ticket.created": "Ticket created",
+  "ticket.imported_from_gmail": "Imported from Gmail",
+  "ticket.updated": "Ticket updated",
+  "ticket.assigned": "Assignment changed",
+  "ticket.ai_triaged": "AI triage completed",
+  "ticket.ai_triage_failed": "AI triage failed",
+  "ticket.reply_suggestion_created": "Reply suggestion created",
+  "ticket.reply_suggestion_edited": "Reply suggestion edited",
+  "ticket.reply_suggestion_approved": "Reply approved",
+  "ticket.reply_suggestion_rejected": "Reply rejected",
+  "ticket.reply_approval_edited": "Approval edited",
+  "ticket.reply_approval_approved": "Approval approved",
+  "ticket.reply_draft_created": "Gmail draft created",
+  "ticket.reply_sent": "Reply sent",
+  "ticket.internal_note_created": "Internal note added",
+  "ticket.internal_note_edited": "Internal note edited",
+  "ticket.internal_note_deleted": "Internal note deleted",
+  "ticket.resolved": "Ticket resolved",
+  "ticket.marked_spam": "Marked as spam",
+  "ticket.bulk_action_item_succeeded": "Bulk action applied",
+};
+
+function eventLabel(eventType: string) {
+  return eventLabels[eventType] ?? eventType.replace("ticket.", "").replaceAll("_", " ");
+}
+
+function eventTone(eventType: string) {
+  if (eventType.includes("failed") || eventType.includes("rejected") || eventType.includes("spam")) return "border-[#ddd7e6] bg-white/50 text-[#746d80]";
+  if (eventType.includes("resolved") || eventType.includes("approved") || eventType.includes("draft_created") || eventType.includes("sent")) return "border-slate-200 bg-slate-100 text-slate-700";
+  if (eventType.includes("ai") || eventType.includes("routing")) return "border-[#ddd7e6] bg-white/50 text-[#655f73]";
+  return "border-slate-200 bg-white text-slate-700";
+}
+
+function formatMetadataValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "none";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (Array.isArray(value)) return value.map(formatMetadataValue).join(", ");
+  if (typeof value === "object") return Object.entries(value as Record<string, unknown>).map(([key, item]) => `${key.replaceAll("_", " ")}: ${formatMetadataValue(item)}`).join(", ");
+  return String(value).replaceAll("_", " ");
+}
+
+function eventDetail(event: TicketEvent) {
+  const metadata = event.event_metadata ?? {};
+  if (metadata.changes && typeof metadata.changes === "object") {
+    const changes = Object.entries(metadata.changes as Record<string, unknown>);
+    if (changes.length) return `Changed ${changes.map(([key, value]) => `${key.replaceAll("_", " ")} to ${formatMetadataValue(value)}`).join("; ")}.`;
+  }
+  if ("from" in metadata || "to" in metadata) return `From ${formatMetadataValue(metadata.from)} to ${formatMetadataValue(metadata.to)}.`;
+  if ("previous_status" in metadata) return `Previous status: ${formatMetadataValue(metadata.previous_status)}.`;
+  if ("source" in metadata) return `Source: ${formatMetadataValue(metadata.source)}.`;
+  if ("error" in metadata) return `Reason: ${formatMetadataValue(metadata.error)}.`;
+  if ("reason" in metadata) return `Reason: ${formatMetadataValue(metadata.reason)}.`;
+  if ("gmail_draft_id" in metadata) return `Gmail draft: ${formatMetadataValue(metadata.gmail_draft_id)}.`;
+  if ("gmail_message_id" in metadata) return `Gmail message: ${formatMetadataValue(metadata.gmail_message_id)}.`;
+  if ("changed" in metadata && metadata.changed === true) {
+    return `Classification changed from ${formatMetadataValue(metadata.previous_priority)} / ${formatMetadataValue(metadata.previous_category)} to ${formatMetadataValue(metadata.new_priority)} / ${formatMetadataValue(metadata.new_category)}.`;
+  }
+  const compact = Object.entries(metadata)
+    .filter(([key]) => !key.endsWith("_id") && key !== "ticket_id")
+    .slice(0, 3)
+    .map(([key, value]) => `${key.replaceAll("_", " ")}: ${formatMetadataValue(value)}`);
+  return compact.length ? compact.join(" / ") : "No extra details recorded.";
+}
+
+function customerSource(ticket: Ticket) {
+  if (ticket.gmail_connection_email) return ticket.gmail_connection_display_name || ticket.gmail_connection_email;
+  return "Manual ticket";
+}
+function parseTemplateTags(value: string) {
+  return value
+    .split(",")
+    .map((tag) => tag.trim().toLowerCase())
+    .filter((tag, index, tags) => tag.length > 0 && tags.indexOf(tag) === index);
+}
+function triageFailureMessage(ticket: Ticket) {
+  if (ticket.triage_status !== "triage_failed") return null;
+  const error = ticket.triage_error_message ?? "AI triage did not complete.";
+  const lower = error.toLowerCase();
+  if (lower.includes("quota") || lower.includes("free gemini") || lower.includes("too_many_requests")) {
+    return {
+      title: "AI paused by Gemini free quota",
+      body: "This ticket was imported correctly, but AI classification paused before Gemini returned a result. You can edit the reply manually or retry after the quota window resets.",
+      reason: error,
+    };
+  }
+  return {
+    title: "AI triage needs a retry",
+    body: "This ticket is still safe to handle manually. Regenerate can retry the classification and draft suggestion.",
+    reason: error,
+  };
+}
+
+export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }: { ticketId: string; basePath?: string }) {
   const supabase = createClient();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [events, setEvents] = useState<TicketEvent[]>([]);
   const [triageResults, setTriageResults] = useState<AITriageResult[]>([]);
   const [replySuggestions, setReplySuggestions] = useState<ReplySuggestion[]>([]);
+  const [templates, setTemplates] = useState<ResponseTemplate[]>([]);
+  const [notes, setNotes] = useState<InternalNote[]>([]);
+  const [routingExecutions, setRoutingExecutions] = useState<RoutingRuleExecution[]>([]);
+  const [noteEdits, setNoteEdits] = useState<Record<string, InternalNoteEdit[]>>({});
+  const [noteMentions, setNoteMentions] = useState<Record<string, InternalNoteMention[]>>({});
   const [replyText, setReplyText] = useState("");
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [templateTagFilter, setTemplateTagFilter] = useState("all");
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateTags, setNewTemplateTags] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [archivingTemplateId, setArchivingTemplateId] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState("");
+  const [activeLock, setActiveLock] = useState<CollaborationLock | null>(null);
+  const activeLockRef = useRef<CollaborationLock | null>(null);
+  const [lockWarning, setLockWarning] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [triaging, setTriaging] = useState(false);
@@ -38,12 +314,26 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
   const [approvingReply, setApprovingReply] = useState(false);
   const [rejectingReply, setRejectingReply] = useState(false);
   const [creatingDraft, setCreatingDraft] = useState(false);
+  const [sendingReply, setSendingReply] = useState(false);
+  const [directSendEnabled, setDirectSendEnabled] = useState(false);
+  const [sendConfirmation, setSendConfirmation] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const [processingAttachmentId, setProcessingAttachmentId] = useState<string | null>(null);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
 
   async function getSessionContext() {
-    const organizationId = getStoredOrganizationId();
     const { data } = await supabase.auth.getSession();
-    if (!organizationId || !data.session) return null;
-    return { organizationId, accessToken: data.session.access_token };
+    const accessToken = data.session?.access_token;
+    if (!accessToken) return null;
+
+    const storedOrganizationId = getStoredOrganizationId();
+    const me = await getMe(accessToken);
+    const selected = (storedOrganizationId ? me.organizations.find((item) => item.id === storedOrganizationId) : null) ?? me.organizations[0] ?? null;
+    if (!selected) return null;
+
+    setStoredOrganizationId(selected.id);
+    setCurrentRole(selected.role);
+    return { organizationId: selected.id, accessToken };
   }
 
   async function loadTicket() {
@@ -51,28 +341,47 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
     setMessage(null);
     const context = await getSessionContext();
     if (!context) {
-      setMessage("Select an organization and sign in before viewing tickets.");
+      setMessage("Create or select a workspace before viewing conversations.");
       setLoading(false);
       return;
     }
 
     try {
-      const [loadedTicket, loadedEvents, loadedResults, loadedSuggestions] = await Promise.all([
-        getTicket(context.organizationId, ticketId, context.accessToken),
-        getTicketEvents(context.organizationId, ticketId, context.accessToken),
-        getTicketTriageResults(context.organizationId, ticketId, context.accessToken),
-        getReplySuggestions(context.organizationId, ticketId, context.accessToken),
-      ]);
+      const loadedTicket = await getTicket(context.organizationId, ticketId, context.accessToken);
       setTicket(loadedTicket);
+
+      const [loadedEvents, loadedResults, loadedSuggestions, loadedTemplates, loadedNotes, loadedRoutingExecutions, loadedSettings] = await Promise.all([
+        getTicketEvents(context.organizationId, ticketId, context.accessToken).catch(() => []),
+        getTicketTriageResults(context.organizationId, ticketId, context.accessToken).catch(() => []),
+        getReplySuggestions(context.organizationId, ticketId, context.accessToken).catch(() => []),
+        getResponseTemplates(context.organizationId, context.accessToken).catch(() => []),
+        getInternalNotes(context.organizationId, ticketId, context.accessToken).catch(() => []),
+        getTicketRoutingExecutions(context.organizationId, ticketId, context.accessToken).catch(() => []),
+        getWorkspaceSettings(context.organizationId, context.accessToken).catch(() => null),
+      ]);
       setEvents(loadedEvents);
       setTriageResults(loadedResults);
       setReplySuggestions(loadedSuggestions);
+      setTemplates(loadedTemplates);
+      setNotes(loadedNotes);
+      setRoutingExecutions(loadedRoutingExecutions);
+      setDirectSendEnabled(Boolean(loadedSettings?.direct_send_enabled));
       const latestSuggestion = loadedSuggestions[0];
       setReplyText(latestSuggestion?.edited_body ?? latestSuggestion?.body ?? "");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to load ticket.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadTemplates(search = templateSearch) {
+    const context = await getSessionContext();
+    if (!context) return;
+    try {
+      setTemplates(await getResponseTemplates(context.organizationId, context.accessToken, search));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to load templates.");
     }
   }
 
@@ -84,10 +393,48 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
     try {
       await runTicketTriage(context.organizationId, ticketId, context.accessToken);
       await loadTicket();
+      setMessage("AI triage completed.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to run AI triage.");
+      if (error instanceof TicketApiError && error.status === 429) {
+        const wait = formatRetryAfter(error.retryAfterSeconds);
+        setMessage(wait ? `${error.message} Try again in about ${wait}.` : error.message);
+      } else {
+        setMessage(error instanceof Error ? error.message : "Failed to run AI triage.");
+      }
+      await loadTicket();
     } finally {
       setTriaging(false);
+    }
+  }
+
+  async function ensureEditLock() {
+    const latestSuggestion = replySuggestions[0];
+    const context = await getSessionContext();
+    if (!latestSuggestion || !context || activeLock) return true;
+    try {
+      const lock = await acquireCollaborationLock(context.organizationId, context.accessToken, {
+        ticket_id: ticketId,
+        resource_type: "reply_suggestion",
+        resource_id: latestSuggestion.id,
+        ttl_seconds: 180,
+      });
+      setActiveLock(lock);
+      setLockWarning(null);
+      return true;
+    } catch (error) {
+      setLockWarning(error instanceof Error ? error.message : "Another agent is editing this reply.");
+      return false;
+    }
+  }
+
+  async function releaseEditLock() {
+    const context = await getSessionContext();
+    if (!context || !activeLock) return;
+    try {
+      await releaseCollaborationLock(context.organizationId, context.accessToken, activeLock.id);
+      setActiveLock(null);
+    } catch {
+      setActiveLock(null);
     }
   }
 
@@ -95,10 +442,12 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
     const latestSuggestion = replySuggestions[0];
     const context = await getSessionContext();
     if (!latestSuggestion || !context) return;
+    if (!(await ensureEditLock())) return;
     setSavingReply(true);
     setMessage(null);
     try {
       await updateReplySuggestion(context.organizationId, latestSuggestion.id, context.accessToken, replyText);
+      await releaseEditLock();
       await loadTicket();
       setMessage("Reply edits saved.");
     } catch (error) {
@@ -112,6 +461,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
     const latestSuggestion = replySuggestions[0];
     const context = await getSessionContext();
     if (!latestSuggestion || !context) return;
+    if (!(await ensureEditLock())) return;
     setApprovingReply(true);
     setMessage(null);
     try {
@@ -119,6 +469,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
         await updateReplySuggestion(context.organizationId, latestSuggestion.id, context.accessToken, replyText);
       }
       await approveReplySuggestion(context.organizationId, latestSuggestion.id, context.accessToken);
+      await releaseEditLock();
       await loadTicket();
       setMessage("Reply approved. Draft creation is now available.");
     } catch (error) {
@@ -136,6 +487,7 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
     setMessage(null);
     try {
       await rejectReplySuggestion(context.organizationId, latestSuggestion.id, context.accessToken);
+      await releaseEditLock();
       await loadTicket();
       setMessage("Reply suggestion rejected.");
     } catch (error) {
@@ -162,21 +514,231 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
     }
   }
 
+
+  async function handleSendReply() {
+    const latestSuggestion = replySuggestions[0];
+    const context = await getSessionContext();
+    if (!latestSuggestion || !ticket || !context) return;
+    setSendingReply(true);
+    setMessage(null);
+    try {
+      const finalBody = latestSuggestion.edited_body ?? latestSuggestion.body;
+      const result = await sendGmailReplyFromSuggestion(context.organizationId, latestSuggestion.id, context.accessToken, {
+        reply_version: latestSuggestion.reply_version,
+        confirm_recipient_email: ticket.customer.email,
+        confirm_subject: replySubject(ticket.subject),
+        confirm_body: finalBody,
+        confirmation_text: "SEND",
+      });
+      setSendConfirmation("");
+      await loadTicket();
+      setMessage(result.test_mode ? `Test send recorded: ${result.gmail_message_id}` : `Gmail reply sent: ${result.gmail_message_id}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to send Gmail reply.");
+    } finally {
+      setSendingReply(false);
+    }
+  }
+  async function handleInsertTemplate(templateId: string) {
+    const context = await getSessionContext();
+    if (!context) return;
+    setMessage(null);
+    try {
+      await insertResponseTemplate(context.organizationId, context.accessToken, templateId, ticketId);
+      await loadTicket();
+      setMessage("Template inserted as an editable reply suggestion.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to insert template.");
+    }
+  }
+
+
+  async function handleCreateTemplate() {
+    const context = await getSessionContext();
+    const body = replyText.trim();
+    const name = newTemplateName.trim();
+    if (!context || !name || !body) {
+      setMessage("Add a template name and reply body before saving a template.");
+      return;
+    }
+    setSavingTemplate(true);
+    setMessage(null);
+    try {
+      const template = await createResponseTemplate(context.organizationId, context.accessToken, {
+        name,
+        body,
+        category_tags: parseTemplateTags(newTemplateTags),
+      });
+      setTemplates((current) => [template, ...current.filter((item) => item.id !== template.id)].sort((first, second) => first.name.localeCompare(second.name)));
+      setNewTemplateName("");
+      setNewTemplateTags("");
+      setMessage("Response template saved.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to save response template.");
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function handleArchiveTemplate(templateId: string) {
+    const context = await getSessionContext();
+    if (!context) return;
+    setArchivingTemplateId(templateId);
+    setMessage(null);
+    try {
+      await updateResponseTemplate(context.organizationId, context.accessToken, templateId, { archived: true });
+      setTemplates((current) => current.filter((template) => template.id !== templateId));
+      setMessage("Response template archived.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to archive response template.");
+    } finally {
+      setArchivingTemplateId(null);
+    }
+  }
+
+  async function handleCreateNote() {
+    const context = await getSessionContext();
+    if (!context || !noteText.trim()) return;
+    setSavingNote(true);
+    setMessage(null);
+    try {
+      await createInternalNote(context.organizationId, ticketId, context.accessToken, noteText.trim());
+      setNoteText("");
+      setNotes(await getInternalNotes(context.organizationId, ticketId, context.accessToken));
+      setMessage("Internal note added.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to add note.");
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  async function handleUpdateNote(noteId: string) {
+    const context = await getSessionContext();
+    if (!context || !editingNoteText.trim()) return;
+    setSavingNote(true);
+    try {
+      await updateInternalNote(context.organizationId, noteId, context.accessToken, editingNoteText.trim());
+      setEditingNoteId(null);
+      setEditingNoteText("");
+      setNotes(await getInternalNotes(context.organizationId, ticketId, context.accessToken));
+      setMessage("Internal note updated.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to update note.");
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+
+  async function handleStoreAttachment(attachmentId: string) {
+    const context = await getSessionContext();
+    if (!context) return;
+    setProcessingAttachmentId(attachmentId);
+    setMessage(null);
+    try {
+      await storeTicketAttachment(context.organizationId, ticketId, attachmentId, context.accessToken);
+      await loadTicket();
+      setMessage("Attachment stored securely.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to store attachment.");
+    } finally {
+      setProcessingAttachmentId(null);
+    }
+  }
+
+  async function handleDownloadAttachment(attachmentId: string, filename?: string | null) {
+    const context = await getSessionContext();
+    if (!context) return;
+    setProcessingAttachmentId(attachmentId);
+    setMessage(null);
+    try {
+      const result = await getTicketAttachmentDownloadUrl(context.organizationId, ticketId, attachmentId, context.accessToken);
+      const anchor = document.createElement("a");
+      anchor.href = result.download_url;
+      anchor.download = filename || "attachment";
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to create attachment download link.");
+    } finally {
+      setProcessingAttachmentId(null);
+    }
+  }
+  async function toggleNoteEdits(noteId: string) {
+    if (noteEdits[noteId]) {
+      setNoteEdits((current) => {
+        const next = { ...current };
+        delete next[noteId];
+        return next;
+      });
+      return;
+    }
+    const context = await getSessionContext();
+    if (!context) return;
+    try {
+      const edits = await getInternalNoteEdits(context.organizationId, noteId, context.accessToken);
+      setNoteEdits((current) => ({ ...current, [noteId]: edits }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to load note history.");
+    }
+  }
+  async function toggleNoteMentions(noteId: string) {
+    if (noteMentions[noteId]) {
+      setNoteMentions((current) => {
+        const next = { ...current };
+        delete next[noteId];
+        return next;
+      });
+      return;
+    }
+    const context = await getSessionContext();
+    if (!context) return;
+    try {
+      const mentions = await getInternalNoteMentions(context.organizationId, noteId, context.accessToken);
+      setNoteMentions((current) => ({ ...current, [noteId]: mentions }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to load note mentions.");
+    }
+  }
   useEffect(() => {
     void loadTicket();
+    return () => {
+      void releaseEditLock();
+    };
   }, [ticketId]);
 
   const latestTriage = triageResults[0];
   const latestSuggestion = replySuggestions[0];
+  const currentWorkflow = ticket ? workflowStatus(ticket, latestSuggestion) : null;
+  const currentSlaExplanation = ticket ? slaExplanation(ticket) : null;
+  const currentSlaTarget = ticket ? slaTarget(ticket) : null;
+  const currentTriageChange = latestTriageChange(events);
+  const triageFailedWithoutResult = ticket?.triage_status === "triage_failed" && !latestTriage;
+  const displayedCategory = triageFailedWithoutResult ? "Not classified" : ticket?.category.replaceAll("_", " ");
+  const displayedReview = triageFailedWithoutResult ? "Not available" : latestTriage?.requires_human_review ? "Required" : "Not flagged";
+  const displayedUrgencyBadge = triageFailedWithoutResult ? <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Not classified</span> : ticket ? <UrgencyBadge priority={ticket.priority} /> : null;
+  const canManageTemplates = currentRole === "owner" || currentRole === "admin";
   const canEdit = latestSuggestion?.status === "suggested" || latestSuggestion?.status === "edited";
-  const canDraft = latestSuggestion?.status === "approved";
+  const draftCreated = latestSuggestion?.status === "draft_created" || Boolean(latestSuggestion?.gmail_draft_id);
+  const canDraft = latestSuggestion?.status === "approved" && !latestSuggestion.gmail_draft_id;
+  const directSendReady = latestSuggestion?.status === "approved" || latestSuggestion?.status === "draft_created";
+  const sendReplyBody = latestSuggestion ? latestSuggestion.edited_body ?? latestSuggestion.body : "";
+  const replyVersionHistory = latestSuggestion ? [...(latestSuggestion.version_history ?? [])].sort((first, second) => second.version - first.version) : [];
+  const sendReplySubject = ticket ? replySubject(ticket.subject) : "";
+  const canSend = directSendEnabled && directSendReady && sendConfirmation === "SEND";
+  const templateTags = Array.from(new Set(templates.flatMap((template) => template.category_tags))).sort();
+  const visibleTemplates = templates.filter((template) => templateTagFilter === "all" || template.category_tags.includes(templateTagFilter));
 
   if (loading) return <p className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600">Loading ticket...</p>;
 
   return (
     <section className="space-y-5">
-      <Link href="/dashboard/tickets" className="text-sm font-medium text-slate-600 hover:text-slate-900">Back to queue</Link>
+      <Link href={basePath} className="text-sm font-medium text-slate-600 hover:text-slate-900">Back to queue</Link>
       {message ? <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">{message}</p> : null}
+      {lockWarning ? <p className="rounded-lg border border-[#ddd7e6] bg-white/50 p-4 text-sm text-[#746d80]">{lockWarning}</p> : null}
 
       {ticket ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
@@ -188,22 +750,97 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                   <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-slate-900">{ticket.subject}</h2>
                   <p className="mt-2 text-sm text-slate-500">From {ticket.customer.name ?? ticket.customer.email} - {new Date(ticket.received_at).toLocaleString()}</p>
                 </div>
-                <div className="flex flex-wrap gap-2"><UrgencyBadge priority={ticket.priority} /><StatusBadge status={ticket.status} /></div>
+                <div className="flex flex-wrap gap-2">
+                  {displayedUrgencyBadge}
+                  <span className="inline-flex flex-col rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium capitalize text-slate-600">
+                    <span>{currentWorkflow?.label}</span>
+                    {currentWorkflow?.detail ? <span className="mt-0.5 font-normal normal-case text-slate-500">{currentWorkflow.detail}</span> : null}
+                  </span>
+                  <span className={`inline-flex max-w-64 flex-col rounded-md border px-2 py-1 text-xs font-medium ${slaTone(ticket.sla_status)}`} title={currentSlaExplanation ?? undefined}>
+                    <span>{slaLabel(ticket)}</span>
+                    {currentSlaExplanation ? <span className="mt-0.5 truncate font-normal normal-case opacity-80">{ticket.sla_status === "paused" ? "No active timer" : relativeDue(currentSlaTarget?.value) ?? currentSlaExplanation}</span> : null}
+                  </span>
+                </div>
               </div>
             </div>
             <div className="max-h-[calc(100vh-280px)] overflow-y-auto p-5">
               <div className="rounded-lg bg-slate-50 p-5 text-sm leading-7 text-slate-700">
                 <p className="whitespace-pre-wrap">{ticket.message_text}</p>
               </div>
-              <div className="mt-6">
-                <h3 className="font-display text-lg font-semibold">Timeline</h3>
-                <div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-200">
-                  {events.map((event) => (
-                    <div key={event.id} className="grid gap-2 p-3 text-sm sm:grid-cols-[1fr_auto]">
-                      <span className="font-medium text-slate-700">{event.event_type.replaceAll("_", " ")}</span>
-                      <span className="font-mono text-xs text-slate-500">{new Date(event.created_at).toLocaleString()}</span>
+              {(ticket.attachments ?? []).length ? (
+                <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-display text-base font-semibold text-slate-900">Email attachments</h3>
+                    <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Metadata only</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {(ticket.attachments ?? []).map((attachment) => (
+                      <div key={attachment.id} className="rounded-md border border-slate-200 p-3 text-sm">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-800">{attachment.filename ?? "Unnamed attachment"}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {[attachment.mime_type ?? "unknown type", formatAttachmentSize(attachment.size_bytes), attachment.is_inline ? "inline" : "attachment"].join(" / ")}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            <span className={`rounded-md border px-2 py-1 text-xs font-medium capitalize ${attachmentStatusClass(attachment.policy_status)}`}>{displayAttachmentStatus(attachment.policy_status)}</span>
+                            <span className={`rounded-md border px-2 py-1 text-xs font-medium capitalize ${attachmentStatusClass(attachment.storage_status)}`}>{displayAttachmentStatus(attachment.storage_status)}</span>
+                            <span className={`rounded-md border px-2 py-1 text-xs font-medium capitalize ${attachmentStatusClass(attachment.scan_status)}`}>{displayAttachmentStatus(attachment.scan_status)}</span>
+                            {attachment.storage_status === "stored" ? (
+                              <Button type="button" variant="ghost" onClick={() => void handleDownloadAttachment(attachment.id, attachment.filename)} disabled={processingAttachmentId === attachment.id}>
+                                {processingAttachmentId === attachment.id ? "Opening..." : "Download"}
+                              </Button>
+                            ) : !attachment.policy_status.startsWith("blocked") ? (
+                              <Button type="button" variant="ghost" onClick={() => void handleStoreAttachment(attachment.id)} disabled={processingAttachmentId === attachment.id}>
+                                {processingAttachmentId === attachment.id ? "Storing..." : "Store file"}
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                        {attachment.notes ? <p className="mt-2 text-xs text-slate-500">{attachment.notes}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">Files stay private. Stored attachments open through short-lived signed URLs after policy and workspace checks.</p>
+                </div>
+              ) : null}
+              <div className="mt-6 space-y-4">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-mono text-xs uppercase tracking-wide text-slate-500">Customer context</p>
+                      <h3 className="mt-1 font-display text-lg font-semibold text-slate-900">{ticket.customer.name ?? ticket.customer.email}</h3>
+                      <p className="mt-1 break-all text-sm text-slate-600">{ticket.customer.email}</p>
                     </div>
-                  ))}
+                    <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600">{events.length} timeline events</span>
+                  </div>
+                  <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                    <div><dt className="text-slate-500">Source</dt><dd className="mt-1 font-medium text-slate-800">{customerSource(ticket)}</dd></div>
+                    <div><dt className="text-slate-500">Received</dt><dd className="mt-1 font-medium text-slate-800">{new Date(ticket.received_at).toLocaleString()}</dd></div>
+                    <div><dt className="text-slate-500">Thread</dt><dd className="mt-1 break-all font-mono text-xs text-slate-700">{ticket.gmail_thread_id ?? ticket.id}</dd></div>
+                  </dl>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-display text-lg font-semibold">Customer timeline</h3>
+                    <span className="text-xs text-slate-500">Oldest to newest</span>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {events.length === 0 ? <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">No timeline events recorded yet.</p> : null}
+                    {events.map((event) => (
+                      <div key={event.id} className={`rounded-lg border p-3 text-sm ${eventTone(event.event_type)}`}>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="font-medium">{eventLabel(event.event_type)}</p>
+                            <p className="mt-1 text-xs leading-5 opacity-80">{eventDetail(event)}</p>
+                          </div>
+                          <span className="shrink-0 font-mono text-xs opacity-70">{new Date(event.created_at).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -216,38 +853,261 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
                 <Button type="button" variant="outline" onClick={() => void handleRunTriage()} disabled={triaging}>{triaging ? "Running..." : "Regenerate"}</Button>
               </div>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div><dt className="text-slate-500">Urgency</dt><dd className="mt-1"><UrgencyBadge priority={ticket.priority} /></dd></div>
-                <div><dt className="text-slate-500">Category</dt><dd className="mt-1 font-medium capitalize">{ticket.category.replaceAll("_", " ")}</dd></div>
-                <div><dt className="text-slate-500">Confidence</dt><dd className="mt-1 font-mono text-slate-600">N/A</dd></div>
-                <div><dt className="text-slate-500">Review</dt><dd className="mt-1 font-medium">{latestTriage?.requires_human_review ? "Required" : "Not flagged"}</dd></div>
+                <div><dt className="text-slate-500">Urgency</dt><dd className="mt-1">{displayedUrgencyBadge}</dd></div>
+                <div><dt className="text-slate-500">Category</dt><dd className="mt-1 font-medium capitalize">{displayedCategory}</dd></div>
+                <div><dt className="text-slate-500">Triage</dt><dd className="mt-1"><span className={`inline-flex rounded-md border px-2 py-1 text-xs font-medium capitalize ${triageStatusTone(ticket.triage_status)}`}>{triageStatusLabel(ticket.triage_status)}</span></dd></div>
+                <div><dt className="text-slate-500">Review</dt><dd className="mt-1 font-medium">{displayedReview}</dd></div>
+                <div><dt className="text-slate-500">Active SLA target</dt><dd className="mt-1 font-medium">{currentSlaTarget ? `${currentSlaTarget.label}: ${formatDue(currentSlaTarget.value)}` : "Not set"}</dd></div>
+                <div><dt className="text-slate-500">SLA timer</dt><dd className="mt-1 font-medium">{ticket.sla_status === "paused" ? "Paused" : relativeDue(currentSlaTarget?.value) ?? "Not set"}</dd></div>
               </dl>
+              {triageFailedWithoutResult ? (
+                <div className="mt-4 rounded-md border border-[#ddd7e6] bg-white/50 p-3 text-sm text-[#746d80]">
+                  AI triage did not complete. The default urgency/category values are hidden because they are not an AI classification.
+                  {ticket.triage_error_message ? <span className="mt-2 block">Reason: {ticket.triage_error_message}</span> : null}
+                </div>
+              ) : null}
+              {currentTriageChange ? (
+                <div className="mt-4 rounded-md border border-[#ddd7e6] bg-white/50 p-3 text-sm text-[#655f73]">
+                  <p className="font-medium">Regenerated triage changed classification</p>
+                  <p className="mt-1 text-xs leading-5">
+                    Urgency changed from {currentTriageChange.previousPriority} to {currentTriageChange.newPriority}; category changed from {currentTriageChange.previousCategory} to {currentTriageChange.newCategory}.
+                  </p>
+                  {currentTriageChange.adjustments ? <p className="mt-1 text-xs leading-5">Guardrails: {currentTriageChange.adjustments}</p> : null}
+                </div>
+              ) : null}
               {latestTriage ? (
                 <div className="mt-4 border-t border-slate-200 pt-4 text-sm">
                   <p className="font-medium">Reasoning</p>
                   <p className="mt-1 text-slate-600">{latestTriage.summary}</p>
                   <p className="mt-3 font-medium">Suggested action</p>
                   <p className="mt-1 text-slate-600">{latestTriage.suggested_action}</p>
+                  <p className="mt-3 font-medium">Knowledge sources</p>
+                  {latestTriage.knowledge_sources?.length ? (
+                    <div className="mt-2 space-y-2">
+                      {latestTriage.knowledge_sources.map((source) => (
+                        <div key={source.id} className="rounded-md border border-slate-200 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium text-slate-800">{source.title}</p>
+                            <span className="font-mono text-xs text-slate-500">score {source.score}</span>
+                          </div>
+                          <p className="mt-1 text-slate-600">{source.excerpt}</p>
+                          {source.matched_terms.length ? <p className="mt-2 text-xs text-slate-500">Matched {source.matched_terms.join(", ")}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="mt-1 text-slate-500">No workspace source influenced this result.</p>}
                 </div>
               ) : <p className="mt-4 text-sm text-slate-500">No AI triage result yet.</p>}
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <h2 className="font-display text-lg font-semibold">Routing history</h2>
+              <div className="mt-3 space-y-2">
+                {routingExecutions.length === 0 ? <p className="text-sm text-slate-500">No routing rules have run on this ticket.</p> : routingExecutions.map((execution) => (
+                  <div key={execution.id} className="rounded-md border border-slate-200 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={execution.matched ? "font-medium text-slate-700" : "font-medium text-slate-500"}>{execution.matched ? "Matched" : "Skipped"}</span>
+                      <span className="font-mono text-xs text-slate-500">{new Date(execution.created_at).toLocaleString()}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">{Object.keys(execution.actions_applied).length ? JSON.stringify(execution.actions_applied) : "No actions applied"}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
               <h2 className="font-display text-lg font-semibold">Suggested reply</h2>
-              {!latestSuggestion ? <p className="mt-3 text-sm text-slate-500">Run triage to generate an editable reply.</p> : (
+              {!latestSuggestion ? <p className="mt-3 text-sm text-slate-500">Run triage or insert a template to create an editable reply.</p> : (
                 <div className="mt-4 space-y-4">
                   <div className="flex items-center justify-between rounded-md bg-slate-50 p-3 text-sm">
                     <span className="capitalize text-slate-600">{displayStatus(latestSuggestion.status)}</span>
-                    <span className="font-mono text-xs text-slate-500">{latestSuggestion.created_by}</span>
+                    <span className="font-mono text-xs text-slate-500">v{latestSuggestion.reply_version} / {latestSuggestion.created_by}</span>
                   </div>
-                  <textarea value={replyText} onChange={(event) => setReplyText(event.target.value)} disabled={!canEdit} rows={12} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm leading-6 outline-none focus:border-slate-900 disabled:bg-slate-50" />
+                  {draftCreated ? (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium">Gmail draft created</p>
+                        {latestSuggestion.gmail_draft_id ? <span className="font-mono text-xs">{latestSuggestion.gmail_draft_id}</span> : null}
+                      </div>
+                      <p className="mt-1 text-xs leading-5">This approved reply already has a Gmail draft. Open Gmail drafts if you want to review it in Gmail before sending manually.</p>
+                      <a href="https://mail.google.com/mail/u/0/#drafts" target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium underline">Open Gmail drafts</a>
+                    </div>
+                  ) : latestSuggestion.status === "approved" ? (
+                    <div className="rounded-md border border-[#ddd7e6] bg-white/50 p-3 text-sm text-[#655f73]">
+                      <p className="font-medium">Approved reply ready</p>
+                      <p className="mt-1 text-xs leading-5">Create a Gmail draft when you are ready. The draft will stay in Gmail for final review.</p>
+                    </div>
+                  ) : null}
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-medium text-slate-800">Reply version history</p>
+                      <span className="font-mono text-xs text-slate-500">{replyVersionHistory.length || 1} version{(replyVersionHistory.length || 1) === 1 ? "" : "s"}</span>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {replyVersionHistory.length ? replyVersionHistory.map((version) => (
+                        <div key={version.id} className="rounded-md border border-slate-200 bg-white p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono font-medium text-slate-700">v{version.version}</span>
+                              <span className="capitalize text-slate-500">{displayStatus(version.status)}</span>
+                              {version.version === latestSuggestion.reply_version ? <span className="rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700">Current</span> : null}
+                              {version.version === latestSuggestion.approved_reply_version ? <span className="rounded bg-white/50 px-2 py-0.5 font-medium text-[#655f73] ring-1 ring-[#ddd7e6]">Approved</span> : null}
+                            </div>
+                            <span className="text-slate-500">{formatReplyVersionTime(version.created_at)}</span>
+                          </div>
+                          <p className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-slate-700">{version.body}</p>
+                        </div>
+                      )) : (
+                        <div className="rounded-md border border-slate-200 bg-white p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="font-mono font-medium text-slate-700">v{latestSuggestion.reply_version}</span>
+                            <span className="capitalize text-slate-500">{displayStatus(latestSuggestion.status)}</span>
+                          </div>
+                          <p className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-slate-700">{sendReplyBody}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <textarea
+                    value={replyText}
+                    onChange={(event) => setReplyText(event.target.value)}
+                    onFocus={() => void ensureEditLock()}
+                    disabled={!canEdit}
+                    rows={12}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm leading-6 outline-none focus:border-slate-900 disabled:bg-slate-50"
+                  />
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button type="button" variant="outline" onClick={() => void handleSaveReply()} disabled={!canEdit || savingReply}>{savingReply ? "Saving..." : "Save"}</Button>
                     <Button type="button" variant="primary" onClick={() => void handleApproveReply()} disabled={!canEdit || approvingReply}>{approvingReply ? "Approving..." : "Approve"}</Button>
                     <Button type="button" variant="danger" onClick={() => void handleRejectReply()} disabled={!canEdit || rejectingReply}>{rejectingReply ? "Rejecting..." : "Reject"}</Button>
-                    <Button type="button" variant="primary" onClick={() => void handleCreateDraft()} disabled={!canDraft || creatingDraft}>{creatingDraft ? "Creating..." : "Create draft"}</Button>
+                    <Button type="button" variant="primary" onClick={() => void handleCreateDraft()} disabled={!canDraft || creatingDraft}>{draftCreated ? "Draft created" : creatingDraft ? "Creating..." : "Create draft"}</Button>
+                    <div className="sm:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium text-slate-800">Direct send</p>
+                        <span className={`rounded-md border px-2 py-1 text-xs font-medium ${directSendEnabled ? "border-[#ddd7e6] bg-white/50 text-[#746d80]" : "border-slate-200 bg-white text-slate-500"}`}>
+                          {directSendEnabled ? "Final confirmation required" : "Off"}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">Before sending, Sift verifies this exact recipient, subject, approved version, and reply body.</p>
+                      <dl className="mt-3 grid gap-2 rounded-md border border-slate-200 bg-white p-3 text-xs sm:grid-cols-2">
+                        <div><dt className="text-slate-500">To</dt><dd className="mt-1 break-all font-medium text-slate-800">{ticket.customer.email}</dd></div>
+                        <div><dt className="text-slate-500">Subject</dt><dd className="mt-1 break-words font-medium text-slate-800">{sendReplySubject}</dd></div>
+                        <div><dt className="text-slate-500">Approved version</dt><dd className="mt-1 font-medium text-slate-800">v{latestSuggestion.reply_version}</dd></div>
+                        <div><dt className="text-slate-500">Status</dt><dd className="mt-1 font-medium capitalize text-slate-800">{displayStatus(latestSuggestion.status)}</dd></div>
+                      </dl>
+                      <div className="mt-3 max-h-36 overflow-y-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-700">{sendReplyBody}</div>
+                      <input value={sendConfirmation} onChange={(event) => setSendConfirmation(event.target.value)} disabled={!directSendEnabled || !directSendReady} placeholder="Type SEND" className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+                      <Button type="button" variant="danger" className="mt-2" onClick={() => void handleSendReply()} disabled={!canSend || sendingReply}>{sendingReply ? "Sending..." : "Send reply"}</Button>
+                      {!directSendEnabled ? <p className="mt-2 text-xs text-slate-500">Direct send is off in Settings - Readiness.</p> : null}
+                      {directSendEnabled && !directSendReady ? <p className="mt-2 text-xs text-slate-500">Approve the reply before direct send is available.</p> : null}
+                    </div>
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-lg font-semibold">Response templates</h2>
+                  <p className="mt-1 text-sm text-slate-500">Insert approved wording or save the current reply as a reusable template.</p>
+                </div>
+                <span className="rounded-md bg-slate-50 px-2 py-1 font-mono text-xs text-slate-500">{templates.length} active</span>
+              </div>
+
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">Save current reply as template</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Owners and admins can save approved wording. Agents can insert existing templates while working replies.</p>
+                  </div>
+                  <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-500">{canManageTemplates ? "Can create" : "Insert only"}</span>
+                </div>
+                {canManageTemplates ? (
+                  <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <input value={newTemplateName} onChange={(event) => setNewTemplateName(event.target.value)} placeholder="Template name" className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <input value={newTemplateTags} onChange={(event) => setNewTemplateTags(event.target.value)} placeholder="Tags, comma separated" className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <Button type="button" variant="outline" className="w-full lg:w-auto" onClick={() => void handleCreateTemplate()} disabled={savingTemplate || !newTemplateName.trim() || !replyText.trim()}>{savingTemplate ? "Saving..." : "Save template"}</Button>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                <input value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="Search templates" className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                <select value={templateTagFilter} onChange={(event) => setTemplateTagFilter(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+                  <option value="all">All tags</option>
+                  {templateTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+                </select>
+                <Button type="button" variant="outline" onClick={() => void loadTemplates()}>Search</Button>
+              </div>
+              <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                {visibleTemplates.map((template) => (
+                  <div key={template.id} className="rounded-md border border-slate-200 p-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-slate-800">{template.name}</p>
+                          <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-500">Version {template.version}</span>
+                        </div>
+                        {template.category_tags.length ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">Tags</span>
+                            {template.category_tags.map((tag) => <span key={tag} className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600">{tag}</span>)}
+                          </div>
+                        ) : <p className="mt-2 text-xs text-slate-400">No tags yet</p>}
+                        <p className="mt-3 line-clamp-3 rounded-md border border-slate-100 bg-slate-50/70 p-2 text-slate-500">{template.body}</p>
+                      </div>
+                      <div className="flex shrink-0 flex-col gap-2">
+                        <Button type="button" variant="ghost" onClick={() => void handleInsertTemplate(template.id)}>Insert</Button>
+                        {canManageTemplates ? <Button type="button" variant="ghost" onClick={() => void handleArchiveTemplate(template.id)} disabled={archivingTemplateId === template.id}>{archivingTemplateId === template.id ? "Archiving..." : "Archive"}</Button> : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {visibleTemplates.length === 0 ? <p className="text-sm text-slate-500">No templates found.</p> : null}
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <h2 className="font-display text-lg font-semibold">Internal notes</h2>
+              <textarea value={noteText} onChange={(event) => setNoteText(event.target.value)} rows={4} placeholder="Add a private note. Mention teammates by email with @name@example.com." className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm leading-6" />
+              <Button type="button" className="mt-2" variant="outline" onClick={() => void handleCreateNote()} disabled={savingNote || !noteText.trim()}>{savingNote ? "Saving..." : "Add note"}</Button>
+              <div className="mt-4 space-y-3">
+                {notes.map((note) => (
+                  <div key={note.id} className="rounded-md border border-slate-200 p-3 text-sm">
+                    {editingNoteId === note.id ? (
+                      <div className="space-y-2">
+                        <textarea value={editingNoteText} onChange={(event) => setEditingNoteText(event.target.value)} rows={4} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                        <div className="flex gap-2">
+                          <Button type="button" variant="primary" onClick={() => void handleUpdateNote(note.id)} disabled={savingNote}>Save note</Button>
+                          <Button type="button" variant="ghost" onClick={() => setEditingNoteId(null)}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="whitespace-pre-wrap text-slate-700">{note.body}</p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span>v{note.version}</span>
+                          <span>{new Date(note.created_at).toLocaleString()}</span>
+                          <button type="button" className="font-medium text-slate-700" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.body); }}>Edit</button>
+                          <button type="button" className="font-medium text-slate-700" onClick={() => void toggleNoteEdits(note.id)}>History</button>
+                          <button type="button" className="font-medium text-slate-700" onClick={() => void toggleNoteMentions(note.id)}>Mentions</button>
+                        </div>
+                        {noteEdits[note.id] ? (
+                          <div className="mt-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600">
+                            {noteEdits[note.id].length === 0 ? "No edits yet." : noteEdits[note.id].map((edit) => <p key={edit.id}>v{edit.version}: {new Date(edit.created_at).toLocaleString()}</p>)}
+                          </div>
+                        ) : null}
+                        {noteMentions[note.id] ? (
+                          <div className="mt-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600">
+                            {noteMentions[note.id].length === 0 ? "No tracked mentions." : noteMentions[note.id].map((mention) => <p key={mention.id}>Mentioned user: {mention.mentioned_user_id}</p>)}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                ))}
+                {notes.length === 0 ? <p className="text-sm text-slate-500">No internal notes yet.</p> : null}
+              </div>
             </div>
           </aside>
         </div>
@@ -255,3 +1115,8 @@ export function TicketDetailClient({ ticketId }: { ticketId: string }) {
     </section>
   );
 }
+
+
+
+
+

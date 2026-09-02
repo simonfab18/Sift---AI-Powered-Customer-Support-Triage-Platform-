@@ -30,6 +30,7 @@ class MailImportRule(Base):
     processed_label_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     spam_label_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     import_unread_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    routing_direction: Mapped[str] = mapped_column(String(40), nullable=False, default="shared_queue", index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 

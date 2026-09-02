@@ -1,20 +1,7 @@
-﻿from celery import Celery
+"""Deprecated Celery module.
 
-from app.core.config import settings
+Redis/Celery is no longer part of staging or production. Async work is dispatched through
+Google Pub/Sub and executed by Cloud Run task routes.
+"""
 
-celery_app = Celery(
-    "support_triage",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
-    include=["app.worker.tasks"],
-)
-
-celery_app.conf.update(
-    task_always_eager=settings.celery_task_always_eager,
-    task_eager_propagates=True,
-    task_serializer="json",
-    result_serializer="json",
-    accept_content=["json"],
-    timezone="UTC",
-    enable_utc=True,
-)
+celery_app = None

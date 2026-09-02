@@ -141,7 +141,8 @@ def test_duplicate_draft_creation_is_prevented(client: TestClient, create_org, m
     second_response = client.post(f"/v1/orgs/{organization['id']}/reply-suggestions/{approval.id}/create-gmail-draft")
 
     assert first_response.status_code == 201
-    assert second_response.status_code == 400
+    assert second_response.status_code == 201
+    assert second_response.json()["gmail_draft_id"] == first_response.json()["gmail_draft_id"]
     with client.session_factory() as db:
         assert len(list(db.scalars(select(GmailDraft)))) == 1
         draft_audit = db.scalar(select(AuditLog).where(AuditLog.action == "gmail.draft.created"))

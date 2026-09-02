@@ -1,14 +1,19 @@
 from fastapi import APIRouter, Query, status
 
 from app.api.deps import CurrentUser, DbSession
+from app.schemas.bulk_action import TicketBulkActionRequest, TicketBulkActionResponse
 from app.schemas.ticket import (
+    AttachmentDownloadUrlResponse,
     TicketAssign,
     TicketCreate,
+    TicketAttachmentRead,
     TicketEventRead,
     TicketListItem,
     TicketRead,
     TicketUpdate,
 )
+from app.services.attachment_service import create_attachment_download_url, store_ticket_attachment
+from app.services.bulk_action_service import run_ticket_bulk_action
 from app.services.ticket_service import (
     assign_ticket,
     create_ticket,
@@ -30,8 +35,34 @@ def read_tickets(
     current_user: CurrentUser,
     status_filter: str | None = Query(default=None, alias="status"),
     priority_filter: str | None = Query(default=None, alias="priority"),
+    sla_status_filter: str | None = Query(default=None, alias="sla_status"),
+    gmail_connection_id: str | None = Query(default=None),
+    gmail_inbox_type: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
 ):
-    return list_tickets(db, organization_id, current_user, status_filter, priority_filter)
+    return list_tickets(
+        db,
+        organization_id,
+        current_user,
+        status_filter,
+        priority_filter,
+        sla_status_filter,
+        limit,
+        offset,
+        gmail_connection_id_filter=gmail_connection_id,
+        gmail_inbox_type_filter=gmail_inbox_type,
+    )
+
+
+@router.post("/bulk-actions", response_model=TicketBulkActionResponse)
+def run_org_ticket_bulk_action(
+    organization_id: str,
+    payload: TicketBulkActionRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    return run_ticket_bulk_action(db, organization_id, current_user, payload)
 
 
 @router.post("", response_model=TicketRead, status_code=status.HTTP_201_CREATED)
@@ -90,6 +121,34 @@ def resolve_org_ticket(
 ):
     return resolve_ticket(db, organization_id, ticket_id, current_user)
 
+
+
+
+@router.post("/{ticket_id}/attachments/{attachment_id}/store", response_model=TicketAttachmentRead)
+async def store_org_ticket_attachment(
+    organization_id: str,
+    ticket_id: str,
+    attachment_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    return await store_ticket_attachment(db, organization_id, ticket_id, attachment_id, current_user)
+
+
+@router.get("/{ticket_id}/attachments/{attachment_id}/download-url", response_model=AttachmentDownloadUrlResponse)
+def read_org_ticket_attachment_download_url(
+    organization_id: str,
+    ticket_id: str,
+    attachment_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+):
+    download_url, expires_in = create_attachment_download_url(db, organization_id, ticket_id, attachment_id, current_user)
+    return AttachmentDownloadUrlResponse(
+        attachment_id=attachment_id,
+        download_url=download_url,
+        expires_in_seconds=expires_in,
+    )
 
 @router.get("/{ticket_id}/events", response_model=list[TicketEventRead])
 def read_ticket_events(

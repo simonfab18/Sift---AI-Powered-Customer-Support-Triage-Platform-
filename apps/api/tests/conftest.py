@@ -8,8 +8,31 @@ from app import models  # noqa: F401
 from app.api.deps import AuthenticatedUser, get_current_user
 from app.db.base import Base
 from app.db.session import get_db
+from app.core.rate_limit import rate_limiter
 from app.main import create_app
 
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    rate_limiter.reset()
+    yield
+    rate_limiter.reset()
+
+@pytest.fixture(autouse=True)
+def stub_auto_triage_dispatch(monkeypatch):
+    class StubDispatchedTask:
+        message_id = "stub-ai-triage-task"
+        topic = "local-ai-triage"
+
+    calls: list[str] = []
+
+    def fake_publish(*, job_id: str):
+        calls.append(job_id)
+        return StubDispatchedTask()
+
+    monkeypatch.setattr("app.services.job_queue_service.publish_ai_triage_task", fake_publish)
+    yield calls
 
 @pytest.fixture
 def client():

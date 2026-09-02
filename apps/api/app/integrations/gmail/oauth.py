@@ -58,7 +58,7 @@ async def exchange_oauth_code(code: str) -> dict[str, Any]:
         )
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=15, trust_env=False) as client:
             response = await client.post(
                 GOOGLE_TOKEN_URL,
                 data={
@@ -82,7 +82,7 @@ async def exchange_oauth_code(code: str) -> dict[str, Any]:
 
 async def fetch_google_userinfo(access_token: str) -> dict[str, Any]:
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=15, trust_env=False) as client:
             response = await client.get(
                 GOOGLE_USERINFO_URL,
                 headers={"Authorization": f"Bearer {access_token}"},
