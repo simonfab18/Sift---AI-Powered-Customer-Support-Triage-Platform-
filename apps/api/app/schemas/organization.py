@@ -18,6 +18,7 @@ class UserOrganizationRead(BaseModel):
     name: str
     slug: str
     role: str
+    joined_via_invite: bool = False
 
 
 class OrganizationExportRead(BaseModel):

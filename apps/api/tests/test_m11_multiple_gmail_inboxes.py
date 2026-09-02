@@ -5,7 +5,9 @@ from sqlalchemy import select
 
 from app.models.audit_log import AuditLog
 from app.models.gmail_connection import GmailConnection
+from app.models.job_run import JobRun
 from app.models.mail_import_rule import MailImportRule
+from app.models.ticket import Ticket
 from app.models.member import MemberRole, MemberStatus, OrganizationMember
 from app.services.email_import_service import import_gmail_message_if_new
 from app.integrations.gmail.mapper import NormalizedGmailMessage
@@ -119,6 +121,43 @@ def test_saved_view_preserves_source_inbox_filter(client: TestClient, create_org
         "priority": "high",
     }
 
+
+
+def test_gmail_spam_label_imports_directly_as_spam_without_ai(client: TestClient, create_org) -> None:
+    organization = create_org()
+    connection_id, _ = _create_connection(client, organization["id"], "support@example.com", "Support")
+    actor = AuthenticatedUser(id="user-owner", email="owner@example.com")
+
+    with client.session_factory() as db:
+        ticket, created = import_gmail_message_if_new(
+            db,
+            organization["id"],
+            connection_id,
+            actor,
+            NormalizedGmailMessage(
+                gmail_message_id="gmail-spam-1",
+                gmail_thread_id="thread-spam",
+                subject="You have won",
+                customer_email="promo@example.com",
+                customer_name="Promo",
+                message_text="Click here to claim your prize.",
+                message_html=None,
+                received_at=datetime.now(UTC),
+                attachments=[],
+                label_ids=["SPAM"],
+            ),
+        )
+        db.commit()
+        stored_ticket = db.get(Ticket, ticket.id)
+        jobs = list(db.scalars(select(JobRun).where(JobRun.job_type == "ai_triage")))
+
+    assert created is True
+    assert stored_ticket.status == "spam"
+    assert stored_ticket.category == "spam"
+    assert stored_ticket.priority == "low"
+    assert stored_ticket.triage_status == "not_queued"
+    assert stored_ticket.triage_error_message == "Auto-triage skipped: Gmail marked this message as spam."
+    assert jobs == []
 
 def test_ticket_queue_exposes_and_filters_source_inbox(client: TestClient, create_org) -> None:
     organization = create_org()

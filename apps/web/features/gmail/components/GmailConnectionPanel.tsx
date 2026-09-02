@@ -84,10 +84,10 @@ function isLongRunningImport(job?: JobRun) {
 }
 
 function importStatusTone(status: string) {
-  if (status === "succeeded") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "failed") return "border-rose-200 bg-rose-50 text-rose-700";
-  if (status === "queued" || status === "running") return "border-sky-200 bg-sky-50 text-sky-700";
-  return "border-slate-200 bg-slate-50 text-slate-600";
+  if (status === "succeeded") return "border-slate-200 bg-white/30 text-slate-700";
+  if (status === "failed") return "border-[#d8d2e4] bg-white/50 text-[#6f6174]";
+  if (status === "queued" || status === "running") return "border-[#ddd7e6] bg-white/50 text-[#655f73]";
+  return "border-slate-200 bg-white/30 text-slate-600";
 }
 
 function importCounts(job?: JobRun) {
@@ -130,17 +130,17 @@ function syncTroubleshootingSummary(connection: GmailConnection) {
   if (!connection.last_notification_at) {
     return "No Gmail push notification has arrived yet. Send a test email or run Import now to confirm the inbox path.";
   }
-  return "No action needed. Push watch and sync are healthy.";
+  return "No action needed. Push watch and sync are active.";
 }
 
 function inputClassName(hasError = false) {
-  return `mt-1 w-full rounded-md border px-3 py-2 text-sm ${hasError ? "border-rose-400 outline-rose-300" : "border-slate-300"}`;
+  return `mt-1 w-full rounded-md border px-3 py-2 text-sm ${hasError ? "border-[#bcb4cb] outline-[#d8d2e4]" : "border-slate-300"}`;
 }
 function connectionHealth(connection: GmailConnection, activeImport?: JobRun) {
   if (activeImport || connection.sync_status === "syncing") {
     return {
       label: "Syncing",
-      className: "border-sky-200 bg-sky-50 text-sky-700",
+      className: "border-[#ddd7e6] bg-white/50 text-[#655f73]",
       message: "Import is running. New messages may appear after this finishes.",
     };
   }
@@ -148,7 +148,7 @@ function connectionHealth(connection: GmailConnection, activeImport?: JobRun) {
   if (connection.status === "reauthorization_required" || connection.sync_status === "reauthorization_required" || connection.watch_status === "reauthorization_required") {
     return {
       label: "Reconnect needed",
-      className: "border-amber-200 bg-amber-50 text-amber-800",
+      className: "border-slate-300 bg-slate-100 text-slate-700",
       message: connection.reauthorization_reason ?? "Google needs this inbox to be connected again.",
     };
   }
@@ -156,7 +156,7 @@ function connectionHealth(connection: GmailConnection, activeImport?: JobRun) {
   if (connection.sync_status === "degraded" || connection.watch_status === "degraded" || connection.watch_status === "error") {
     return {
       label: "Needs attention",
-      className: "border-rose-200 bg-rose-50 text-rose-700",
+      className: "border-[#d8d2e4] bg-white/50 text-[#6f6174]",
       message: connection.sync_error_message ?? connection.watch_error ?? "Sync is degraded. Try import now, then reconnect Gmail if it stays degraded.",
     };
   }
@@ -164,22 +164,22 @@ function connectionHealth(connection: GmailConnection, activeImport?: JobRun) {
   if (connection.watch_expires_at && isWatchExpiringSoon(connection.watch_expires_at)) {
     return {
       label: "Watch renewal soon",
-      className: "border-amber-200 bg-amber-50 text-amber-800",
+      className: "border-slate-300 bg-slate-100 text-slate-700",
       message: "Gmail watch is close to renewal. Scheduler should refresh it before expiry.",
     };
   }
 
   if (connection.status === "active" && connection.sync_status === "active" && connection.watch_status === "active") {
     return {
-      label: "Healthy",
-      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      label: "Active",
+      className: "border-white/50 bg-white/60 backdrop-blur-md text-slate-700",
       message: "Gmail sync and push watch are active.",
     };
   }
 
   return {
     label: "Setup in progress",
-    className: "border-slate-200 bg-slate-50 text-slate-700",
+    className: "border-slate-200 bg-white/30 text-slate-700",
     message: "This inbox is connected, but sync status is still settling.",
   };
 }
@@ -421,27 +421,34 @@ export function GmailConnectionPanel() {
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6">
+    <div className="rounded-lg border border-white/50 bg-white/60 backdrop-blur-xl p-5 shadow-[0_18px_48px_rgba(72,60,96,0.075)]">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold">Gmail inboxes</h2>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Integrations</p>
+          <h2 className="mt-1 font-display text-xl font-semibold text-slate-950">Gmail inboxes</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
             Connect multiple Gmail inboxes, label each source, and keep import rules separate per inbox.
           </p>
         </div>
-        <button type="button" onClick={handleConnect} disabled={connecting || !organizationId} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:bg-slate-400">
+        <button type="button" onClick={handleConnect} disabled={connecting || !organizationId} className="rounded-md border border-slate-950 bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-slate-900/10 disabled:border-slate-300 disabled:bg-slate-300">
           {connecting ? "Connecting..." : "Connect Gmail"}
         </button>
       </div>
 
       {message ? (
-        <div className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        <div className="mt-5 rounded-md border border-slate-200 bg-white/30 p-4 text-sm text-slate-600">
           {message} {!organizationId ? <Link href="/dashboard/organizations" className="font-medium text-slate-950 underline">Go to organizations</Link> : null}
         </div>
       ) : null}
 
       <div className="mt-6">
-        <h3 className="text-sm font-semibold">Connected inboxes</h3>
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Sources</p>
+            <h3 className="mt-1 font-display text-lg font-semibold text-slate-950">Connected inboxes</h3>
+          </div>
+          <span className="rounded-md border border-slate-200 bg-white/30 px-2 py-1 font-mono text-xs text-slate-600">{connections.length} connected</span>
+        </div>
         {loading ? <p className="mt-3 text-sm text-slate-600">Loading...</p> : null}
         {!loading && connections.length === 0 ? <p className="mt-3 text-sm text-slate-600">No Gmail inbox connected yet.</p> : null}
         <div className="mt-3 space-y-4">
@@ -462,7 +469,7 @@ export function GmailConnectionPanel() {
             const sharedAddressInvalid = sharedSourceNeedsAddress && Boolean(draftSourceAddress) && !isValidEmailAddress(draftSourceAddress);
             const saveDisabled = savingConnectionId === connection.id || (sharedSourceNeedsAddress && (!draftSourceAddress || sharedAddressInvalid));
             return (
-              <div key={connection.id} className="rounded-lg border border-slate-200 p-4 text-sm">
+              <div key={connection.id} className="rounded-lg border border-white/50 bg-white/60 backdrop-blur-xl p-4 text-sm shadow-[0_18px_48px_rgba(72,60,96,0.075)]">
                 <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -473,19 +480,19 @@ export function GmailConnectionPanel() {
                     <p className="mt-1 text-xs text-slate-500">Saved source: {sourceLabel}{sourceAddress ? ` / ${sourceAddress}` : ""}</p>
                     <p className="mt-2 text-xs leading-5 text-slate-600">{health.message}</p>
                     <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-md bg-slate-50 p-2">
+                      <div className="rounded-md border border-[#eee9f2] bg-white/30 p-2">
                         <span className="block font-medium text-slate-900">Sync</span>
                         <span>{connection.sync_status ?? "unknown"}</span>
                       </div>
-                      <div className="rounded-md bg-slate-50 p-2">
+                      <div className="rounded-md border border-[#eee9f2] bg-white/30 p-2">
                         <span className="block font-medium text-slate-900">Watch</span>
                         <span>{connection.watch_status ?? "unknown"}</span>
                       </div>
-                      <div className="rounded-md bg-slate-50 p-2">
+                      <div className="rounded-md border border-[#eee9f2] bg-white/30 p-2">
                         <span className="block font-medium text-slate-900">Last success</span>
                         <span>{formatDateTime(connection.last_successful_sync_at ?? connection.last_sync_at)}</span>
                       </div>
-                      <div className="rounded-md bg-slate-50 p-2">
+                      <div className="rounded-md border border-[#eee9f2] bg-white/30 p-2">
                         <span className="block font-medium text-slate-900">Watch expires</span>
                         <span>{formatDateTime(connection.watch_expires_at)}</span>
                       </div>
@@ -496,12 +503,12 @@ export function GmailConnectionPanel() {
                       <p>Failures: {connection.consecutive_sync_failures ?? 0}</p>
                       <p>History checkpoint: {connection.gmail_history_id ?? "Not recorded"}</p>
                     </div>
-                    <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                    <div className="mt-3 rounded-md border border-slate-200 bg-white/30 p-3 text-xs text-slate-600">
                       <p className="font-medium text-slate-900">Sync/watch next step</p>
                       <p className="mt-1 leading-5">{syncTroubleshootingSummary(connection)}</p>
                     </div>
                     {activeImport ? (
-                      <div className={`mt-3 rounded-md border p-3 text-xs ${isLongRunningImport(activeImport) ? "border-amber-200 bg-amber-50 text-amber-900" : "border-sky-200 bg-sky-50 text-sky-700"}`}>
+                      <div className={`mt-3 rounded-md border p-3 text-xs ${isLongRunningImport(activeImport) ? "border-[#d8d2e4] bg-white/50 text-[#6f6174]" : "border-[#ddd7e6] bg-white/50 text-[#655f73]"}`}>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-medium">Import {activeImport.status}</span>
                           {activeImportRuntime ? <span>{activeImportRuntime}</span> : null}
@@ -522,12 +529,12 @@ export function GmailConnectionPanel() {
                       </div>
                     ) : null}
                     {connection.sync_error_message || connection.watch_error ? (
-                      <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                      <div className="mt-3 rounded-md border border-[#d8d2e4] bg-white/50 p-3 text-xs text-[#6f6174]">
                         {connection.sync_error_message ?? connection.watch_error}
                       </div>
                     ) : null}
                     {health.label === "Needs attention" || health.label === "Reconnect needed" ? (
-                      <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                      <div className="mt-3 rounded-md border border-slate-200 bg-white/30 p-3 text-xs text-slate-700">
                         <p className="font-medium">Recovery path</p>
                         <ol className="mt-2 list-decimal space-y-1 pl-4 leading-5">
                           <li>Run Import now after the current job finishes.</li>
@@ -538,14 +545,14 @@ export function GmailConnectionPanel() {
                     ) : null}
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row xl:flex-col">
-                    <button type="button" onClick={() => handleSync(connection.id)} disabled={importIsBusy} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 disabled:text-slate-400">
+                    <button type="button" onClick={() => handleSync(connection.id)} disabled={importIsBusy} className="rounded-md border border-slate-300 bg-white/75 px-3 py-2 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_rgba(72,60,96,0.06)] disabled:text-slate-400">
                       {activeImport ? "Import running" : syncingConnectionId === connection.id ? "Starting..." : "Import now"}
                     </button>
-                    <button type="button" onClick={() => handleQueueSync(connection.id)} disabled={importIsBusy} className="rounded-md bg-slate-950 px-3 py-2 text-xs font-medium text-white disabled:bg-slate-400">
+                    <button type="button" onClick={() => handleQueueSync(connection.id)} disabled={importIsBusy} className="rounded-md border border-slate-950 bg-slate-950 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-slate-900/10 disabled:border-slate-300 disabled:bg-slate-300">
                       {activeImport ? "Import running" : queueingConnectionId === connection.id ? "Queueing..." : "Queue import"}
                     </button>
                     {health.label === "Reconnect needed" || health.label === "Needs attention" ? (
-                      <button type="button" onClick={handleConnect} disabled={connecting || !organizationId} className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 disabled:opacity-50">
+                      <button type="button" onClick={handleConnect} disabled={connecting || !organizationId} className="rounded-md border border-[#d8d2e4] bg-white/50 px-3 py-2 text-xs font-semibold text-[#6f6174] disabled:opacity-50">
                         Reconnect Gmail
                       </button>
                     ) : null}
@@ -567,8 +574,8 @@ export function GmailConnectionPanel() {
                   </label>
                   <label className="block">
                     <span className="text-xs font-medium text-slate-500">Group/shared address</span>
-                    <input type="email" inputMode="email" value={draftMeta.shared_address} onChange={(event) => setDraftConnectionMeta((current) => ({ ...current, [connection.id]: { ...draftMeta, shared_address: event.target.value } }))} disabled={draftMeta.inbox_type === "individual"} placeholder="support@example.com" className={`${inputClassName(sharedAddressInvalid || (sharedSourceNeedsAddress && !draftSourceAddress))} disabled:bg-slate-50`} />
-                    <span className={`mt-1 block min-h-8 text-xs ${sharedAddressInvalid ? "text-rose-700" : sharedSourceNeedsAddress && !draftSourceAddress ? "text-amber-700" : "text-transparent"}`}>
+                    <input type="email" inputMode="email" value={draftMeta.shared_address} onChange={(event) => setDraftConnectionMeta((current) => ({ ...current, [connection.id]: { ...draftMeta, shared_address: event.target.value } }))} disabled={draftMeta.inbox_type === "individual"} placeholder="support@example.com" className={`${inputClassName(sharedAddressInvalid || (sharedSourceNeedsAddress && !draftSourceAddress))} disabled:bg-white/30`} />
+                    <span className={`mt-1 block min-h-8 text-xs ${sharedAddressInvalid ? "text-[#6f6174]" : sharedSourceNeedsAddress && !draftSourceAddress ? "text-[#6f6174]" : "text-transparent"}`}>
                       {sharedAddressInvalid ? "Use a valid email address." : sharedSourceNeedsAddress && !draftSourceAddress ? "Enter the group or shared mailbox email before saving." : "No validation message"}
                     </span>
                   </label>
@@ -605,7 +612,7 @@ export function GmailConnectionPanel() {
       <div className="mt-6">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">Recent imports</h3>
-          <button type="button" onClick={() => void loadConnections()} className="text-xs font-medium text-slate-600">Refresh</button>
+          <button type="button" onClick={() => void loadConnections()} className="text-xs font-semibold text-slate-600 hover:text-slate-950">Refresh</button>
         </div>
         {imports.length === 0 ? <p className="mt-3 text-sm text-slate-600">No imports yet.</p> : null}
         <div className="mt-3 space-y-2">
@@ -632,3 +639,9 @@ export function GmailConnectionPanel() {
     </div>
   );
 }
+
+
+
+
+
+

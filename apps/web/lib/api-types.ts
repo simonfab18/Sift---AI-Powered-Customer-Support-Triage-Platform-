@@ -3,6 +3,7 @@ export type Organization = {
   name: string;
   slug: string;
   role: string;
+  joined_via_invite?: boolean;
 };
 
 export type MeResponse = {
@@ -126,6 +127,10 @@ export type Member = {
   role: string;
   status: string;
   created_at: string;
+  invite_email_delivery_status?: string | null;
+  invite_email_delivery_detail?: string | null;
+  invite_url?: string | null;
+  ticket_counts?: Record<string, number>;
 };
 export type MailImportRule = {
   id: string;

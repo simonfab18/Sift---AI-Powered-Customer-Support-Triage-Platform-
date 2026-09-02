@@ -118,6 +118,38 @@ def test_assign_ticket_requires_active_org_member(client: TestClient, create_org
     assert good_response.json()["assigned_to_user_id"] == "agent-user"
 
 
+
+def test_agent_cannot_assign_ticket_to_teammate(client: TestClient, create_org) -> None:
+    organization = create_org()
+    ticket = create_ticket(client, organization["id"])
+
+    with client.session_factory() as db:
+        owner = db.scalar(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == organization["id"],
+                OrganizationMember.user_id == "user-owner",
+            )
+        )
+        owner.role = MemberRole.AGENT.value
+        db.add(
+            OrganizationMember(
+                organization_id=organization["id"],
+                user_id="other-agent",
+                email="other-agent@example.com",
+                role=MemberRole.AGENT.value,
+                status=MemberStatus.ACTIVE.value,
+            )
+        )
+        db.commit()
+
+    response = client.post(
+        f"/v1/orgs/{organization['id']}/tickets/{ticket['id']}/assign",
+        json={"assigned_to_user_id": "other-agent"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Insufficient role"
+
 def test_mark_spam_and_resolve_update_status(client: TestClient, create_org) -> None:
     organization = create_org()
     spam_ticket = create_ticket(client, organization["id"], subject="Buy followers now")

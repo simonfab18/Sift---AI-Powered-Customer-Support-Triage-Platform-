@@ -56,3 +56,6 @@ export function IntegrationCard({ name, description, status }: { name: string; d
     </article>
   );
 }
+
+
+

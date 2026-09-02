@@ -187,3 +187,5 @@ export function RealTeamPage() {
 export function RealSettingsPage() {
   return <div className="app-page-grid"><div className="page-title"><span className="eyebrow">Settings</span><h1>Workspace controls</h1><p>Use these shortcuts to configure the core pilot workflow.</p></div><div className="metrics-grid"><Link className="panel" href="/app/settings/workspace"><h2>Workspace</h2><p style={{ color: "var(--muted)" }}>Create or switch organizations.</p></Link><Link className="panel" href="/app/integrations"><h2>Gmail import</h2><p style={{ color: "var(--muted)" }}>Connect Gmail and import conversations.</p></Link><Link className="panel" href="/app/team"><h2>Team roles</h2><p style={{ color: "var(--muted)" }}>Invite teammates and manage owner/admin/agent access.</p></Link></div></div>;
 }
+
+

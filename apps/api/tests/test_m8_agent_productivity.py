@@ -238,3 +238,30 @@ def test_collaboration_lock_blocks_silent_reply_overwrite(client, create_org) ->
     with client.session_factory() as db:
         stored = db.get(ReplySuggestion, suggestion["id"])
         assert stored.edited_body is None
+
+def test_response_template_names_must_be_unique_while_active(client, create_org) -> None:
+    organization = create_org()
+    first = client.post(
+        f"/v1/orgs/{organization['id']}/response-templates",
+        json={"name": "Billing refund", "body": "First template body.", "category_tags": ["billing"]},
+    )
+    assert first.status_code == 201
+
+    duplicate = client.post(
+        f"/v1/orgs/{organization['id']}/response-templates",
+        json={"name": "  billing   refund  ", "body": "Duplicate template body.", "category_tags": ["billing"]},
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "An active response template with this name already exists"
+
+    archived = client.patch(
+        f"/v1/orgs/{organization['id']}/response-templates/{first.json()['id']}",
+        json={"archived": True},
+    )
+    assert archived.status_code == 200
+
+    replacement = client.post(
+        f"/v1/orgs/{organization['id']}/response-templates",
+        json={"name": "Billing refund", "body": "Replacement template body.", "category_tags": ["billing"]},
+    )
+    assert replacement.status_code == 201

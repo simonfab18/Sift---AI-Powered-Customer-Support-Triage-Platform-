@@ -10,6 +10,7 @@ from app.integrations.gemini.client import GeminiQuotaExceededError
 from app.models.ai_triage_result import AITriageResult
 from app.models.job_run import JobRun
 from app.models.reply_approval import ReplyApproval
+from app.models.reply_suggestion import ReplySuggestion
 from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
 from app.models.workspace_settings import WorkspaceSettings
@@ -81,6 +82,105 @@ def test_enqueue_ticket_triage_reuses_active_job(client: TestClient, create_org,
     assert stub_auto_triage_dispatch == [existing_job.id]
 
 
+
+def test_non_support_ticket_skips_auto_triage(client: TestClient, create_org, stub_auto_triage_dispatch) -> None:
+    organization = create_org()
+    response = client.post(
+        f"/v1/orgs/{organization['id']}/tickets",
+        json={
+            "customer_email": "newsletter@example.com",
+            "subject": "Weekly product update",
+            "message_text": "Here is our newsletter digest and webinar invite for this week.",
+        },
+    )
+    assert response.status_code == 201
+    ticket = response.json()
+
+    with client.session_factory() as db:
+        stored_ticket = db.get(Ticket, ticket["id"])
+        jobs = list(db.scalars(select(JobRun).where(JobRun.job_type == "ai_triage")))
+        events = list(db.scalars(select(TicketEvent).where(TicketEvent.ticket_id == ticket["id"])))
+
+    assert stored_ticket.status == "spam"
+    assert stored_ticket.category == "spam"
+    assert stored_ticket.priority == "low"
+    assert stored_ticket.triage_status == "not_queued"
+    assert stored_ticket.triage_error_message.startswith("Auto-triage skipped:")
+    assert jobs == []
+    assert stub_auto_triage_dispatch == []
+    assert any(event.event_type == "ticket.ai_triage_skipped" for event in events)
+
+def test_low_signal_junk_ticket_is_marked_spam(client: TestClient, create_org, stub_auto_triage_dispatch) -> None:
+    organization = create_org()
+    response = client.post(
+        f"/v1/orgs/{organization['id']}/tickets",
+        json={
+            "customer_email": "sender@example.com",
+            "subject": "adasd",
+            "message_text": "asdada",
+        },
+    )
+    assert response.status_code == 201
+    ticket = response.json()
+
+    with client.session_factory() as db:
+        stored_ticket = db.get(Ticket, ticket["id"])
+        jobs = list(db.scalars(select(JobRun).where(JobRun.job_type == "ai_triage")))
+
+    assert stored_ticket.status == "spam"
+    assert stored_ticket.category == "spam"
+    assert stored_ticket.priority == "low"
+    assert stored_ticket.triage_status == "not_queued"
+    assert "No clear customer-support signal" in stored_ticket.triage_error_message
+    assert jobs == []
+    assert stub_auto_triage_dispatch == []
+
+
+def test_spam_ticket_skips_auto_triage_and_marks_spam(client: TestClient, create_org, stub_auto_triage_dispatch) -> None:
+    organization = create_org()
+    response = client.post(
+        f"/v1/orgs/{organization['id']}/tickets",
+        json={
+            "customer_email": "promo@example.com",
+            "subject": "Buy followers now",
+            "message_text": "Limited time offer. Buy followers and casino traffic today.",
+        },
+    )
+    assert response.status_code == 201
+    ticket = response.json()
+
+    with client.session_factory() as db:
+        stored_ticket = db.get(Ticket, ticket["id"])
+        jobs = list(db.scalars(select(JobRun).where(JobRun.job_type == "ai_triage")))
+
+    assert stored_ticket.status == "spam"
+    assert stored_ticket.category == "spam"
+    assert stored_ticket.priority == "low"
+    assert stored_ticket.triage_status == "not_queued"
+    assert jobs == []
+    assert stub_auto_triage_dispatch == []
+
+
+def test_manual_triage_retry_overrides_support_relevance_gate(client: TestClient, create_org, stub_auto_triage_dispatch) -> None:
+    organization = create_org()
+    response = client.post(
+        f"/v1/orgs/{organization['id']}/tickets",
+        json={
+            "customer_email": "newsletter@example.com",
+            "subject": "Weekly product update",
+            "message_text": "Here is our newsletter digest and webinar invite for this week.",
+        },
+    )
+    assert response.status_code == 201
+    ticket = response.json()
+
+    retry_response = client.post(f"/v1/orgs/{organization['id']}/tickets/{ticket['id']}/triage/retry")
+
+    assert retry_response.status_code == 202
+    retry_job = retry_response.json()
+    assert retry_job["job_metadata"]["manual_retry"] is True
+    assert stub_auto_triage_dispatch == [retry_job["id"]]
+
 def test_triage_worker_completes_job_and_versions_result(client: TestClient, create_org, monkeypatch) -> None:
     organization = create_org()
     ticket = create_api_ticket(client, organization["id"], subject="Refund request")
@@ -122,6 +222,43 @@ def test_triage_worker_completes_job_and_versions_result(client: TestClient, cre
     assert stored_job.job_metadata["ai_triage_result_id"] == result.id
     assert approval is not None
     assert "ticket.ai_triaged" in event_types
+
+def test_triage_worker_marks_ai_spam_result_without_approval(client: TestClient, create_org, monkeypatch) -> None:
+    organization = create_org()
+    ticket = create_api_ticket(client, organization["id"], subject="Need help with this message")
+
+    async def fake_classify(prompt: str):
+        return (
+            TriageOutput(
+                category=TicketCategory.SPAM,
+                priority=TicketPriority.LOW,
+                sentiment=TicketSentiment.NEUTRAL,
+                summary="Message is empty or unrelated noise.",
+                suggested_action="Do not route to support.",
+                draft_reply="No reply needed.",
+                confidence_score=88,
+                reasoning="The message has no actionable support request.",
+                requires_human_review=False,
+            ),
+            {"model": "gemini-test", "output_text": "{}"},
+        )
+
+    monkeypatch.setattr("app.services.ai_triage_service.classify_ticket_with_gemini", fake_classify)
+
+    with client.session_factory() as db:
+        job = db.scalar(select(JobRun).where(JobRun.job_type == "ai_triage"))
+        result = asyncio.run(run_ticket_triage_job(db, job.id))
+        stored_ticket = db.get(Ticket, ticket["id"])
+        approval = db.scalar(select(ReplyApproval).where(ReplyApproval.ticket_id == ticket["id"]))
+        suggestion = db.scalar(select(ReplySuggestion).where(ReplySuggestion.ticket_id == ticket["id"]))
+
+    assert result.category == "spam"
+    assert stored_ticket.status == "spam"
+    assert stored_ticket.category == "spam"
+    assert stored_ticket.priority == "low"
+    assert stored_ticket.triage_status == "triaged"
+    assert approval is None
+    assert suggestion is None
 
 
 

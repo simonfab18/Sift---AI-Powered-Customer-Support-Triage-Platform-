@@ -188,7 +188,7 @@ export function KnowledgeSettings() {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium text-slate-900">{source.title}</p>
                       <span className="rounded-md bg-slate-100 px-2 py-1 text-xs capitalize text-slate-600">{source.source_type.replaceAll("_", " ")}</span>
-                      <span className={`rounded-md px-2 py-1 text-xs capitalize ${source.status === "active" ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>{source.status}</span>
+                      <span className={`rounded-md px-2 py-1 text-xs capitalize ${source.status === "active" ? "bg-slate-100 text-slate-700" : "bg-slate-100 text-slate-500"}`}>{source.status}</span>
                     </div>
                     <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{source.body}</p>
                     <p className="mt-2 text-xs text-slate-500">{formatDate(source.effective_from)} to {formatDate(source.effective_until)}</p>
@@ -207,3 +207,6 @@ export function KnowledgeSettings() {
     </section>
   );
 }
+
+
+

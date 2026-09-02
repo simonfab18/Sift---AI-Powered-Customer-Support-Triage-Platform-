@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     encryption_key: str | None = None
     encryption_keyring: str | None = None
     frontend_origin: str | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str = "Sift"
+    smtp_use_tls: bool = True
+    invite_email_enabled: bool = True
     error_tracking_dsn: str | None = None
     error_tracking_provider: str = "disabled"
     logging_level: str = "INFO"

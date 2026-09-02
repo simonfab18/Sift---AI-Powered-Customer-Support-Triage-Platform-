@@ -15,6 +15,27 @@ from app.services.rbac_service import require_membership, require_role
 from app.services.reply_suggestion_service import create_agent_reply_suggestion
 
 
+
+def _normalized_name(name: str) -> str:
+    return " ".join(name.strip().lower().split())
+
+
+def _ensure_unique_active_template_name(db: Session, organization_id: str, name: str, template_id: str | None = None) -> None:
+    normalized = _normalized_name(name)
+    templates = list(
+        db.scalars(
+            select(ResponseTemplate).where(
+                ResponseTemplate.organization_id == organization_id,
+                ResponseTemplate.archived_at.is_(None),
+            )
+        )
+    )
+    for template in templates:
+        if template_id is not None and template.id == template_id:
+            continue
+        if _normalized_name(template.name) == normalized:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An active response template with this name already exists")
+
 def _normalize_tags(tags: list[str]) -> list[str]:
     normalized: list[str] = []
     for tag in tags:
@@ -53,6 +74,7 @@ def create_response_template(
     payload: ResponseTemplateCreate,
 ) -> ResponseTemplate:
     require_role(db, organization_id, actor, {MemberRole.OWNER, MemberRole.ADMIN})
+    _ensure_unique_active_template_name(db, organization_id, payload.name)
     template = ResponseTemplate(
         organization_id=organization_id,
         name=payload.name.strip(),
@@ -88,6 +110,7 @@ def update_response_template(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Response template not found")
     changed = False
     if payload.name is not None and payload.name.strip() != template.name:
+        _ensure_unique_active_template_name(db, organization_id, payload.name, template.id)
         template.name = payload.name.strip()
         changed = True
     if payload.body is not None and payload.body != template.body:

@@ -6,9 +6,9 @@ import { TicketStatusBadge } from "./TicketStatusBadge";
 import type { TicketListItem } from "../types";
 
 const slaTone: Record<string, string> = {
-  on_track: "bg-teal-50 text-teal-700",
-  warning: "bg-amber-50 text-amber-700",
-  breached: "bg-rose-50 text-rose-700",
+  on_track: "bg-slate-100 text-slate-700",
+  warning: "bg-white/50 text-[#746d80]",
+  breached: "bg-white/50 text-[#6f6174]",
   paused: "bg-slate-100 text-slate-600",
 };
 
@@ -22,9 +22,9 @@ function SourceInboxBadge({ ticket }: { ticket: TicketListItem }) {
   const label = ticket.gmail_connection_display_name || ticket.gmail_connection_email;
   if (!label) return <span className="text-xs text-slate-400">Manual</span>;
   return (
-    <span className="inline-flex flex-col gap-1 rounded-md bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700">
+    <span className="inline-flex flex-col gap-1 rounded-md border border-[#ddd7e6] bg-white/50 px-2 py-1 text-xs font-semibold text-[#5f5a70]">
       <span>{label}</span>
-      <span className="font-normal text-sky-600">{sourceTypeLabel(ticket.gmail_connection_inbox_type)}{ticket.gmail_connection_shared_address ? ` / ${ticket.gmail_connection_shared_address}` : ""}</span>
+      <span className="font-normal text-[#817b8d]">{sourceTypeLabel(ticket.gmail_connection_inbox_type)}{ticket.gmail_connection_shared_address ? ` / ${ticket.gmail_connection_shared_address}` : ""}</span>
     </span>
   );
 }
@@ -91,7 +91,7 @@ function SlaBadge({ ticket }: { ticket: TicketListItem }) {
 function TicketWorkflowStatusBadge({ ticket }: { ticket: TicketListItem }) {
   if (ticket.latest_reply_status === "approved" && !ticket.latest_reply_gmail_draft_id) {
     return (
-      <span className="inline-flex flex-col rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800" title="Reply is approved. Create a Gmail draft when ready.">
+      <span className="inline-flex flex-col rounded-md border border-[#ddd7e6] bg-white/50 px-2 py-1 text-xs font-semibold text-[#655f73]" title="Reply is approved. Create a Gmail draft when ready.">
         <span>Reply approved</span>
         <span className="mt-0.5 font-normal">Draft not created</span>
       </span>
@@ -103,18 +103,18 @@ function TicketWorkflowStatusBadge({ ticket }: { ticket: TicketListItem }) {
 function triageState(ticket: TicketListItem) {
   const status = ticket.triage_status;
   const error = ticket.triage_error_message?.toLowerCase() ?? "";
-  if (status === "triaged") return { label: "Triaged", className: "border-teal-200 bg-teal-50 text-teal-700", detail: null as string | null };
-  if (status === "queued") return { label: "Queued", className: "border-sky-200 bg-sky-50 text-sky-700", detail: null as string | null };
-  if (status === "triaging") return { label: "Running", className: "border-sky-200 bg-sky-50 text-sky-700", detail: null as string | null };
+  if (status === "triaged") return { label: "Triaged", className: "border-slate-200 bg-slate-100 text-slate-700", detail: null as string | null };
+  if (status === "queued") return { label: "Queued", className: "border-[#ddd7e6] bg-white/50 text-[#655f73]", detail: null as string | null };
+  if (status === "triaging") return { label: "Running", className: "border-[#ddd7e6] bg-white/50 text-[#655f73]", detail: null as string | null };
   if (status === "triage_failed") {
     const quota = error.includes("quota") || error.includes("free gemini") || error.includes("too_many_requests") || error.includes("prepayment credits");
     return {
       label: quota ? "AI paused" : "Retry needed",
-      className: quota ? "border-amber-200 bg-amber-50 text-amber-800" : "border-rose-200 bg-rose-50 text-rose-700",
+      className: quota ? "border-[#ddd7e6] bg-white/50 text-[#746d80]" : "border-[#d8d2e4] bg-white/50 text-[#6f6174]",
       detail: ticket.triage_error_message,
     };
   }
-  return { label: status?.replaceAll("_", " ") || "Not queued", className: "border-slate-200 bg-slate-50 text-slate-600", detail: null as string | null };
+  return { label: status?.replaceAll("_", " ") || "Not queued", className: "border-slate-200 bg-white/30 text-slate-600", detail: null as string | null };
 }
 
 function hasAiClassification(ticket: TicketListItem) {
@@ -122,7 +122,7 @@ function hasAiClassification(ticket: TicketListItem) {
 }
 
 function NotClassifiedBadge() {
-  return <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">Not classified</span>;
+  return <span className="inline-flex rounded-md border border-slate-200 bg-white/30 px-2 py-1 text-xs font-medium text-slate-600">Not classified</span>;
 }
 
 function ClassificationRail({ ticket, className }: { ticket: TicketListItem; className?: string }) {
@@ -155,8 +155,8 @@ type TicketListProps = {
 export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketListProps) {
   if (tickets.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8">
-        <h2 className="font-display text-lg font-semibold">Nothing waiting on you</h2>
+      <div className="rounded-lg border border-dashed border-slate-300 bg-white/60 p-8 shadow-[0_18px_48px_rgba(72,60,96,0.075)] backdrop-blur-xl">
+        <h2 className="font-display text-lg font-semibold text-slate-950">Nothing waiting on you</h2>
         <p className="mt-2 text-sm text-slate-600">The active queue is clear. Check back after the next Gmail import or triage run.</p>
       </div>
     );
@@ -165,10 +165,10 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
   const selectable = Boolean(onToggleSelection && selectedIds);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-lg border border-white/50 bg-white/60 backdrop-blur-xl shadow-[0_18px_48px_rgba(72,60,96,0.075)]">
       <div className="hidden md:block">
         <table className="w-full border-collapse text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <thead className="border-b border-slate-200 bg-white/30 text-[11px] uppercase tracking-[0.08em] text-slate-500">
             <tr>
               <th className="w-3 px-0 py-3" />
               {selectable ? <th className="w-10 px-3 py-3">Select</th> : null}
@@ -183,9 +183,9 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
               <th className="px-4 py-3">Received</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[#eee9f2]">
             {tickets.map((ticket) => (
-              <tr key={ticket.id} className="hover:bg-slate-50">
+              <tr key={ticket.id} className="transition hover:bg-white/30">
                 <td className="px-0 py-0 align-stretch"><ClassificationRail ticket={ticket} className="h-full min-h-14 rounded-none" /></td>
                 {selectable ? (
                   <td className="px-3 py-3">
@@ -198,7 +198,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
                     />
                   </td>
                 ) : null}
-                <td className="px-4 py-3 font-medium text-slate-900"><Link href={`/dashboard/tickets/${ticket.id}`}>{ticket.subject}</Link></td>
+                <td className="px-4 py-3 font-semibold text-slate-950"><Link href={`/dashboard/tickets/${ticket.id}`}>{ticket.subject}</Link></td>
                 <td className="px-4 py-3 text-slate-600">{ticket.customer_name ?? ticket.customer_email}</td>
                 <td className="px-4 py-3"><SourceInboxBadge ticket={ticket} /></td>
                 <td className="px-4 py-3"><TicketClassification ticket={ticket} type="priority" /></td>
@@ -213,7 +213,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
         </table>
       </div>
 
-      <div className="divide-y divide-slate-100 md:hidden">
+      <div className="divide-y divide-[#eee9f2] md:hidden">
         {tickets.map((ticket) => (
           <div key={ticket.id} className="grid grid-cols-[auto_1fr] gap-3 p-4">
             <ClassificationRail ticket={ticket} className="h-full rounded-full" />
@@ -229,7 +229,7 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
                   />
                 ) : null}
                 <div>
-                  <Link href={`/dashboard/tickets/${ticket.id}`} className="font-medium text-slate-900">{ticket.subject}</Link>
+                  <Link href={`/dashboard/tickets/${ticket.id}`} className="font-semibold text-slate-950">{ticket.subject}</Link>
                   <p className="mt-1 text-sm text-slate-500">{ticket.customer_name ?? ticket.customer_email}</p>
                 </div>
               </div>
@@ -247,3 +247,9 @@ export function TicketList({ tickets, selectedIds, onToggleSelection }: TicketLi
     </div>
   );
 }
+
+
+
+
+
+

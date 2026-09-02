@@ -10,7 +10,7 @@ from app.integrations.gmail.mapper import NormalizedGmailMessage, normalize_gmai
 from app.models.gmail_connection import GmailConnection
 from app.models.job_run import JobRun, JobRunStatus
 from app.models.mail_import_rule import MailImportRule
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketStatus, TicketTriageStatus
 from app.models.ticket_attachment import TicketAttachment
 from app.services.gmail_token_service import refresh_connection_access_token
 from app.services.operations_service import ensure_job_defaults, mark_job_failed, mark_job_running, mark_job_succeeded
@@ -18,6 +18,7 @@ from app.services.pilot_control_service import ensure_sync_enabled
 from app.services.rbac_service import require_membership
 from app.services.routing_rule_service import apply_routing_rules
 from app.services.sla_service import initialize_ticket_sla
+from app.services.support_relevance_service import decide_ticket_auto_triage
 from app.services.ticket_service import get_or_create_customer, write_ticket_event
 from app.services.workspace_settings_service import get_or_create_workspace_settings
 
@@ -149,6 +150,14 @@ def _create_ticket_from_gmail(
         )
     settings = get_or_create_workspace_settings(db, organization_id)
     initialize_ticket_sla(ticket, settings)
+    decision = decide_ticket_auto_triage(ticket, normalized.label_ids)
+    if not decision.should_auto_triage:
+        ticket.triage_status = TicketTriageStatus.NOT_QUEUED.value
+        ticket.triage_error_message = f"Auto-triage skipped: {decision.reason}"
+        if decision.is_spam:
+            ticket.status = TicketStatus.SPAM.value
+            ticket.category = TicketCategory.SPAM.value
+            ticket.priority = TicketPriority.LOW.value
     apply_routing_rules(db, ticket)
     write_ticket_event(
         db,
@@ -159,8 +168,19 @@ def _create_ticket_from_gmail(
             "gmail_message_id": normalized.gmail_message_id,
             "gmail_thread_id": normalized.gmail_thread_id,
             "gmail_connection_id": connection_id,
+            "gmail_label_ids": normalized.label_ids,
+            "auto_triage_candidate": decision.should_auto_triage,
+            "auto_triage_skip_reason": None if decision.should_auto_triage else decision.reason,
         },
     )
+    if not decision.should_auto_triage:
+        write_ticket_event(
+            db,
+            ticket,
+            actor,
+            "ticket.ai_triage_skipped",
+            {"reason": decision.reason, "is_spam": decision.is_spam, "quota_saved": True, "source": "gmail_import"},
+        )
     return ticket
 
 

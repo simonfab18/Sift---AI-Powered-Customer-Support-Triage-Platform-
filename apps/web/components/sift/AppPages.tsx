@@ -61,3 +61,6 @@ function ActivityPanel() {
 function TablePage({ eyebrow, title, headers, rows }: { eyebrow: string; title: string; headers: string[]; rows: string[][] }) {
   return <div className="app-page-grid"><div className="page-title"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>Designed states, clear status, and operational actions are ready for backend wiring.</p></div><table className="table"><thead><tr>{headers.map((h) => <th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={i}>{row.map((cell) => <td key={cell}>{cell}</td>)}</tr>)}</tbody></table></div>;
 }
+
+
+

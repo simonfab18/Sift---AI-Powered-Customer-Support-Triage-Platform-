@@ -73,10 +73,10 @@ function hasRoutingReady(members: Member[]) {
 }
 
 function statusTone(status: ChecklistStatus) {
-  if (status === "done") return "border-teal-200 bg-teal-50 text-teal-800";
-  if (status === "attention") return "border-amber-200 bg-amber-50 text-amber-800";
-  if (status === "optional") return "border-slate-200 bg-slate-50 text-slate-600";
-  return "border-sky-200 bg-sky-50 text-sky-800";
+  if (status === "done") return "border-slate-200 bg-white/30 text-slate-700";
+  if (status === "attention") return "border-[#ddd7e6] bg-white/50 text-[#746d80]";
+  if (status === "optional") return "border-slate-200 bg-white/30 text-slate-600";
+  return "border-[#ddd7e6] bg-white/50 text-[#655f73]";
 }
 
 function statusLabel(status: ChecklistStatus) {
@@ -271,11 +271,11 @@ export function OnboardingChecklist() {
   if (dismissed) return null;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-900/5">
+    <section className="rounded-lg border border-white/50 bg-white/60 backdrop-blur-xl p-4 shadow-[0_18px_48px_rgba(72,60,96,0.075)]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="font-mono text-xs uppercase tracking-wide text-slate-500">Setup</p>
-          <h2 className="mt-1 font-display text-lg font-semibold">Onboarding checklist</h2>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Pilot setup</p>
+          <h2 className="mt-1 font-display text-lg font-semibold text-slate-950">Readiness checklist</h2>
           <p className="mt-1 text-sm text-slate-500">
             {loading ? "Checking workspace setup..." : `${progress} of ${requiredSteps.length} required steps complete${attentionCount ? ` / ${attentionCount} need attention` : ""}`}
           </p>
@@ -283,26 +283,28 @@ export function OnboardingChecklist() {
         <Button variant="ghost" onClick={dismissOnboarding}>Dismiss</Button>
       </div>
 
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
         <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${percent}%` }} />
       </div>
 
-      {message ? <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{message}</p> : null}
+      {message ? <p className="mt-4 rounded-md border border-[#ddd7e6] bg-white/50 p-3 text-sm text-[#746d80]">{message}</p> : null}
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-2 lg:grid-cols-2">
         {steps.map((step) => {
           const status = step.status ?? (step.done ? "done" : "next");
           return (
-            <Link key={step.label} href={step.href} className={`rounded-lg border p-3 text-sm transition hover:border-slate-300 hover:bg-white ${statusTone(status)}`}>
-              <span className="rounded-md bg-white/80 px-2 py-1 text-xs font-medium">{statusLabel(status)}</span>
-              <span className="mt-2 block font-medium text-slate-900">{step.label}</span>
-              <span className="mt-1 block min-h-10 text-xs leading-5 opacity-80">{step.detail}</span>
-              <span className="mt-3 inline-flex text-xs font-medium underline decoration-transparent hover:decoration-current">{step.cta}</span>
+            <Link key={step.label} href={step.href} className={`group grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border bg-white p-3 text-sm transition hover:border-slate-300 hover:bg-white/30 ${statusTone(status)}`}>
+              <span className="w-16 rounded-md bg-white/70 px-2 py-1 text-center text-[11px] font-semibold uppercase tracking-wide shadow-[0_10px_24px_rgba(72,60,96,0.06)]">{statusLabel(status)}</span>
+              <span className="min-w-0">
+                <span className="block font-semibold text-slate-950">{step.label}</span>
+                <span className="mt-0.5 block truncate text-xs leading-5 opacity-80">{step.detail}</span>
+              </span>
+              <span className="text-xs font-semibold text-slate-500 group-hover:text-[#655f73]">Open</span>
             </Link>
           );
         })}
         {!loading && steps.length === 0 ? (
-          <Link href="/dashboard/organizations" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-teal-700">
+          <Link href="/dashboard/organizations" className="rounded-md border border-slate-200 bg-white/30 p-3 text-sm font-semibold text-[#655f73]">
             Create your first workspace
           </Link>
         ) : null}
@@ -310,3 +312,8 @@ export function OnboardingChecklist() {
     </section>
   );
 }
+
+
+
+
+

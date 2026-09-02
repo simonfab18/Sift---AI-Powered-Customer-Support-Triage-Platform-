@@ -3,3 +3,6 @@ import { AnalyticsDashboard } from "@/features/analytics/components/AnalyticsDas
 export default function AnalyticsPage() {
   return <AnalyticsDashboard />;
 }
+
+
+

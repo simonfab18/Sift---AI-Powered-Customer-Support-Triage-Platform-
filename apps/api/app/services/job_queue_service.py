@@ -6,12 +6,13 @@ from app.api.deps import AuthenticatedUser
 from app.models.ai_triage_result import AITriageResult
 from app.models.gmail_sync_event import GmailSyncEvent
 from app.models.job_run import JobRun, JobRunStatus
-from app.models.ticket import Ticket, TicketTriageStatus
+from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketStatus, TicketTriageStatus
 from app.services.ai_triage_service import PROMPT_VERSION, SCHEMA_VERSION
 from app.services.email_import_service import create_gmail_import_job, get_active_gmail_import_job
 from app.services.gmail_history_sync_service import create_history_sync_event, list_stale_connections
 from app.services.operations_service import mark_job_failed
 from app.services.pilot_control_service import ensure_auto_triage_enabled, ensure_sync_enabled, is_auto_triage_enabled
+from app.services.support_relevance_service import decide_ticket_auto_triage
 from app.services.task_dispatcher_service import (
     TaskDispatchError,
     publish_ai_triage_task,
@@ -79,6 +80,28 @@ def enqueue_ticket_triage(
         return None
     if not respect_workspace_setting:
         ensure_auto_triage_enabled(db, organization_id)
+
+    if not force:
+        decision = decide_ticket_auto_triage(ticket)
+        if not decision.should_auto_triage:
+            ticket.triage_status = TicketTriageStatus.NOT_QUEUED.value
+            ticket.active_triage_job_id = None
+            ticket.triage_error_message = f"Auto-triage skipped: {decision.reason}"
+            if decision.is_spam:
+                ticket.status = TicketStatus.SPAM.value
+                ticket.category = TicketCategory.SPAM.value
+                ticket.priority = TicketPriority.LOW.value
+            from app.services.ticket_service import write_ticket_event
+
+            write_ticket_event(
+                db,
+                ticket,
+                actor,
+                "ticket.ai_triage_skipped",
+                {"reason": decision.reason, "is_spam": decision.is_spam, "quota_saved": True},
+            )
+            db.commit()
+            return None
 
     if not force and ticket.active_triage_job_id:
         active_job = db.get(JobRun, ticket.active_triage_job_id)

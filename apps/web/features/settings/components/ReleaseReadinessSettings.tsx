@@ -20,7 +20,7 @@ const lifecycleMessages = [
   {
     label: "Gmail connected",
     audience: "Owner/Admin",
-    body: "Gmail is connected. Confirm the inbox health card is green, then run the first import and review the imported tickets.",
+    body: "Gmail is connected. Confirm the inbox health card is active, then run the first import and review the imported tickets.",
   },
   {
     label: "Import degraded",
@@ -93,9 +93,9 @@ type PilotReadinessItem = {
 };
 
 function readinessTone(status: PilotReadinessItem["status"]) {
-  if (status === "ready") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (status === "review") return "border-sky-200 bg-sky-50 text-sky-800";
-  return "border-amber-200 bg-amber-50 text-amber-900";
+  if (status === "ready") return "border-slate-200 bg-slate-50 text-slate-700";
+  if (status === "review") return "border-[#ddd7e6] bg-white/50 text-[#655f73]";
+  return "border-[#d8d2e4] bg-white/50 text-[#6f6174]";
 }
 
 function readinessLabel(status: PilotReadinessItem["status"]) {
@@ -361,8 +361,8 @@ export function ReleaseReadinessSettings() {
             <ToggleRow label="Attachment AI processing" description="Allow future AI features to inspect stored attachment contents. Keep off unless the workspace owner has explicitly opted in." checked={attachmentAiProcessingEnabled} onChange={setAttachmentAiProcessingEnabled} />
           </div>
           <label className="mt-4 block text-sm font-medium text-slate-700" htmlFor="pilot-feedback-contact">Pilot support contact</label>
-          <input id="pilot-feedback-contact" type="email" inputMode="email" value={pilotFeedbackContact} onChange={(event) => setPilotFeedbackContact(event.target.value)} placeholder="support@example.com" className={`mt-2 w-full rounded-md border px-3 py-2 text-sm outline-none ${pilotContactInvalid ? "border-amber-400 focus:border-amber-600" : "border-slate-300 focus:border-slate-900"}`} />
-          {pilotContactInvalid ? <p className="mt-2 text-xs font-medium text-amber-700">Enter a valid support email before saving.</p> : null}
+          <input id="pilot-feedback-contact" type="email" inputMode="email" value={pilotFeedbackContact} onChange={(event) => setPilotFeedbackContact(event.target.value)} placeholder="support@example.com" className={`mt-2 w-full rounded-md border px-3 py-2 text-sm outline-none ${pilotContactInvalid ? "border-[#bcb4cb] focus:border-[#756f9f]" : "border-slate-300 focus:border-slate-900"}`} />
+          {pilotContactInvalid ? <p className="mt-2 text-xs font-medium text-[#746d80]">Enter a valid support email before saving.</p> : null}
           <Button type="button" variant="primary" className="mt-5" onClick={() => void saveFlags()} disabled={saving || pilotContactInvalid}>{saving ? "Saving..." : "Save release controls"}</Button>
           {message ? <p className="mt-4 text-sm text-slate-600">{message}</p> : null}
         </section>
@@ -376,8 +376,8 @@ export function ReleaseReadinessSettings() {
               <dt className="text-slate-500">AI quota</dt>
               <dd className="font-medium">{aiUsage ? `Workspace ${usageLimitLabel(aiUsage.used, aiUsage.daily_limit)} today` : "App-side Gemini cap"}</dd>
               {aiUsage ? <p className="mt-1 text-xs text-slate-500">Staging safety cap {usageLimitLabel(aiUsage.global_used, aiUsage.global_daily_limit)} today.</p> : null}
-              {aiUsage?.paused_for_today ? <p className="mt-1 text-xs font-medium text-amber-700">Workspace AI paused for today. It resets {new Date(aiUsage.resets_at).toLocaleString()}.</p> : null}
-              {aiUsage?.global_paused_for_today ? <p className="mt-1 text-xs font-medium text-amber-700">Staging-wide AI safety cap is reached. It resets {new Date(aiUsage.resets_at).toLocaleString()}.</p> : null}
+              {aiUsage?.paused_for_today ? <p className="mt-1 text-xs font-medium text-[#746d80]">Workspace AI paused for today. It resets {new Date(aiUsage.resets_at).toLocaleString()}.</p> : null}
+              {aiUsage?.global_paused_for_today ? <p className="mt-1 text-xs font-medium text-[#746d80]">Staging-wide AI safety cap is reached. It resets {new Date(aiUsage.resets_at).toLocaleString()}.</p> : null}
             </div>
             <div><dt className="text-slate-500">Send policy</dt><dd className="font-medium">{directSendEnabled ? "Direct send allowed with confirmation" : "Draft only, no direct send"}</dd></div>
             <div><dt className="text-slate-500">Attachment AI</dt><dd className="font-medium">{attachmentAiProcessingEnabled ? "Opted in" : "Not allowed"}</dd></div>
@@ -391,7 +391,7 @@ export function ReleaseReadinessSettings() {
             <h2 className="font-display text-lg font-semibold">Pilot launch checklist</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">A workspace-level safety check before pointing a real Gmail support inbox at the pilot.</p>
           </div>
-          <span className={`w-fit rounded-md px-2 py-1 text-xs font-medium ${pilotAttentionCount > 0 ? "bg-amber-100 text-amber-800" : pilotReviewCount > 0 ? "bg-sky-100 text-sky-800" : "bg-emerald-100 text-emerald-700"}`}>
+          <span className={`w-fit rounded-md px-2 py-1 text-xs font-medium ${pilotAttentionCount > 0 ? "bg-white/50 text-[#6f6174] ring-1 ring-[#d8d2e4]" : pilotReviewCount > 0 ? "bg-white/50 text-[#655f73] ring-1 ring-[#ddd7e6]" : "bg-slate-100 text-slate-700"}`}>
             {pilotAttentionCount > 0 ? `${pilotAttentionCount} attention` : pilotReviewCount > 0 ? `${pilotReviewCount} review` : "Pilot-ready"}
           </span>
         </div>
@@ -421,7 +421,7 @@ export function ReleaseReadinessSettings() {
             <article key={item.label} className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-medium text-slate-900">{item.label}</h3>
-                <Link href={item.href} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-teal-700 ring-1 ring-inset ring-slate-200">{item.action}</Link>
+                <Link href={item.href} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-200">{item.action}</Link>
               </div>
               <p className="mt-2 leading-6 text-slate-600">{item.detail}</p>
             </article>
@@ -433,7 +433,7 @@ export function ReleaseReadinessSettings() {
         <h2 className="font-display text-lg font-semibold">Lifecycle communications</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Reusable pilot messages for onboarding, degraded sync, quota limits, and approval reminders.</p>
         {aiUsage ? (
-          <div className={aiPausedForToday ? "mt-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" : "mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"}>
+          <div className={aiPausedForToday ? "mt-4 rounded-md border border-[#d8d2e4] bg-white/50 p-4 text-sm text-[#6f6174]" : "mt-4 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700"}>
             <p className="font-medium">{aiPausedForToday ? "AI paused for today" : "AI usage available today"}</p>
             <p className="mt-1">Workspace: {aiUsage.daily_limit > 0 ? `${aiUsage.remaining} of ${aiUsage.daily_limit} daily free triage runs remain` : "daily cap disabled"}. Staging safety cap: {aiUsage.global_daily_limit > 0 ? `${aiUsage.global_remaining} of ${aiUsage.global_daily_limit} remain` : "disabled"}. Resets {new Date(aiUsage.resets_at).toLocaleString()}.</p>
             {globalAiPaused && !workspaceAiPaused ? <p className="mt-2 font-medium">Your workspace still has quota, but the staging-wide safety cap is reached.</p> : null}
@@ -471,7 +471,7 @@ export function ReleaseReadinessSettings() {
             <label className="block text-sm font-medium text-slate-700" htmlFor="deletion-reason">Deletion request reason</label>
             <textarea id="deletion-reason" value={deletionReason} onChange={(event) => setDeletionReason(event.target.value)} rows={3} className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900" placeholder="Why should this workspace be queued for deletion?" />
             <Button type="button" variant="outline" className="mt-3" onClick={() => void submitDeletionRequest()} disabled={requestingDeletion}>{requestingDeletion ? "Requesting..." : "Request deletion"}</Button>
-            {deletionRequest ? <p className="mt-3 text-xs text-amber-700">Deletion request recorded at {new Date(deletionRequest.requested_at).toLocaleString()}. Workspace automation is paused.</p> : null}
+            {deletionRequest ? <p className="mt-3 text-xs text-[#746d80]">Deletion request recorded at {new Date(deletionRequest.requested_at).toLocaleString()}. Workspace automation is paused.</p> : null}
           </div>
         </div>
 
@@ -485,3 +485,7 @@ export function ReleaseReadinessSettings() {
     </div>
   );
 }
+
+
+
+

@@ -343,7 +343,11 @@ async def _execute_ticket_triage(
         ticket.category = output.category.value
         ticket.priority = output.priority.value
         ticket.sentiment = output.sentiment.value
-        if ticket.status in {TicketStatus.NEW.value, TicketStatus.OPEN.value, TicketStatus.PENDING.value}:
+        is_spam_result = output.category == TicketCategory.SPAM
+        if is_spam_result:
+            ticket.status = TicketStatus.SPAM.value
+            ticket.priority = TicketPriority.LOW.value
+        elif ticket.status in {TicketStatus.NEW.value, TicketStatus.OPEN.value, TicketStatus.PENDING.value}:
             transition_ticket_status(ticket, TicketStatus.AWAITING_APPROVAL.value)
         ticket.triage_status = TicketTriageStatus.TRIAGED.value
         ticket.triage_error_message = None
@@ -379,18 +383,19 @@ async def _execute_ticket_triage(
         db.add(result)
         db.flush()
         record_knowledge_usage(db, ticket.id, result.id, PROMPT_VERSION, retrieved_knowledge)
-        create_ai_reply_suggestion_from_triage(db, ticket.id, result, ticket.gmail_connection_id)
-        db.add(
-            ReplyApproval(
-                organization_id=ticket.organization_id,
-                ticket_id=ticket.id,
-                ai_triage_result_id=result.id,
-                gmail_connection_id=ticket.gmail_connection_id,
-                suggested_reply=result.draft_reply,
-                final_reply=result.draft_reply,
+        if not is_spam_result:
+            create_ai_reply_suggestion_from_triage(db, ticket.id, result, ticket.gmail_connection_id)
+            db.add(
+                ReplyApproval(
+                    organization_id=ticket.organization_id,
+                    ticket_id=ticket.id,
+                    ai_triage_result_id=result.id,
+                    gmail_connection_id=ticket.gmail_connection_id,
+                    suggested_reply=result.draft_reply,
+                    final_reply=result.draft_reply,
+                )
             )
-        )
-        db.flush()
+            db.flush()
 
         if job is not None:
             mark_job_succeeded(job)

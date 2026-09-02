@@ -3,16 +3,16 @@ import Link from "next/link";
 import { SiftLogo } from "@/components/sift/SiftLogo";
 
 const nav = [
-  ["Product", "/product"],
-  ["Solutions", "/solutions"],
-  ["Security", "/security"],
+  ["Features", "/features"],
+  ["How It Works", "/how-it-works"],
   ["Pricing", "/pricing"],
   ["Resources", "/resources"],
+  ["About", "/about"],
 ];
 
 export function MarketingNav() {
   return (
-    <header className="marketing-nav">
+    <header className="marketing-nav landing-nav">
       <div className="sift-container nav-inner">
         <SiftLogo />
         <nav className="nav-links" aria-label="Main navigation">
@@ -24,12 +24,9 @@ export function MarketingNav() {
         </nav>
         <div className="nav-actions">
           <Link className="quiet-link" href="/login">
-            Sign in
+            Login
           </Link>
-          <Link className="button secondary" href="/contact">
-            Book a demo
-          </Link>
-          <Link className="button primary" href="/signup">
+          <Link className="button primary nav-cta" href="/signup">
             Start free
           </Link>
         </div>
@@ -37,3 +34,6 @@ export function MarketingNav() {
     </header>
   );
 }
+
+
+

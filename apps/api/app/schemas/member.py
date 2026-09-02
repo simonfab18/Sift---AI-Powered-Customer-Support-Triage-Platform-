@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.member import MemberRole, MemberStatus
@@ -22,3 +23,8 @@ class MemberRead(BaseModel):
     email: str
     role: str
     status: str
+    created_at: datetime
+    invite_email_delivery_status: str | None = None
+    invite_email_delivery_detail: str | None = None
+    invite_url: str | None = None
+    ticket_counts: dict[str, int] = Field(default_factory=dict)

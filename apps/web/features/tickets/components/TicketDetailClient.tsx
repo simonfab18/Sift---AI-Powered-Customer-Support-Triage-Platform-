@@ -67,8 +67,8 @@ function formatAttachmentSize(sizeBytes: number | null) {
 }
 
 function attachmentStatusClass(status: string) {
-  if (status.startsWith("blocked")) return "border-red-200 bg-red-50 text-red-700";
-  if (status === "stored" || status === "clean" || status === "metadata_only") return "border-teal-200 bg-teal-50 text-teal-700";
+  if (status.startsWith("blocked")) return "border-[#d8d2e4] bg-white/50 text-[#6f6174]";
+  if (status === "stored" || status === "clean" || status === "metadata_only") return "border-slate-200 bg-slate-100 text-slate-700";
   return "border-slate-200 bg-slate-50 text-slate-600";
 }
 
@@ -88,9 +88,9 @@ function formatRetryAfter(seconds: number | null) {
 }
 
 function triageStatusTone(status?: string | null) {
-  if (status === "triaged") return "border-teal-200 bg-teal-50 text-teal-700";
-  if (status === "queued" || status === "triaging") return "border-sky-200 bg-sky-50 text-sky-700";
-  if (status === "triage_failed") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (status === "triaged") return "border-slate-200 bg-slate-100 text-slate-700";
+  if (status === "queued" || status === "triaging") return "border-[#ddd7e6] bg-white/50 text-[#655f73]";
+  if (status === "triage_failed") return "border-[#ddd7e6] bg-white/50 text-[#746d80]";
   if (status === "not_queued") return "border-slate-200 bg-slate-50 text-slate-600";
   return "border-slate-200 bg-slate-50 text-slate-600";
 }
@@ -147,10 +147,10 @@ function slaLabel(ticket: Ticket) {
 }
 
 function slaTone(status: string) {
-  if (status === "breached") return "border-rose-200 bg-rose-50 text-rose-700";
-  if (status === "warning") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (status === "breached") return "border-[#d8d2e4] bg-white/50 text-[#6f6174]";
+  if (status === "warning") return "border-[#ddd7e6] bg-white/50 text-[#746d80]";
   if (status === "paused") return "border-slate-200 bg-slate-100 text-slate-600";
-  return "border-teal-200 bg-teal-50 text-teal-700";
+  return "border-slate-200 bg-slate-100 text-slate-700";
 }
 function slaExplanation(ticket: Ticket) {
   if (ticket.sla_status === "paused") return "Timer paused because the ticket is pending, resolved, or spam.";
@@ -218,9 +218,9 @@ function eventLabel(eventType: string) {
 }
 
 function eventTone(eventType: string) {
-  if (eventType.includes("failed") || eventType.includes("rejected") || eventType.includes("spam")) return "border-amber-200 bg-amber-50 text-amber-800";
-  if (eventType.includes("resolved") || eventType.includes("approved") || eventType.includes("draft_created") || eventType.includes("sent")) return "border-teal-200 bg-teal-50 text-teal-800";
-  if (eventType.includes("ai") || eventType.includes("routing")) return "border-sky-200 bg-sky-50 text-sky-800";
+  if (eventType.includes("failed") || eventType.includes("rejected") || eventType.includes("spam")) return "border-[#ddd7e6] bg-white/50 text-[#746d80]";
+  if (eventType.includes("resolved") || eventType.includes("approved") || eventType.includes("draft_created") || eventType.includes("sent")) return "border-slate-200 bg-slate-100 text-slate-700";
+  if (eventType.includes("ai") || eventType.includes("routing")) return "border-[#ddd7e6] bg-white/50 text-[#655f73]";
   return "border-slate-200 bg-white text-slate-700";
 }
 
@@ -319,6 +319,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const [sendConfirmation, setSendConfirmation] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [processingAttachmentId, setProcessingAttachmentId] = useState<string | null>(null);
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
 
   async function getSessionContext() {
     const { data } = await supabase.auth.getSession();
@@ -326,13 +327,12 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     if (!accessToken) return null;
 
     const storedOrganizationId = getStoredOrganizationId();
-    if (storedOrganizationId) return { organizationId: storedOrganizationId, accessToken };
-
     const me = await getMe(accessToken);
-    const selected = me.organizations[0] ?? null;
+    const selected = (storedOrganizationId ? me.organizations.find((item) => item.id === storedOrganizationId) : null) ?? me.organizations[0] ?? null;
     if (!selected) return null;
 
     setStoredOrganizationId(selected.id);
+    setCurrentRole(selected.role);
     return { organizationId: selected.id, accessToken };
   }
 
@@ -720,6 +720,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
   const displayedCategory = triageFailedWithoutResult ? "Not classified" : ticket?.category.replaceAll("_", " ");
   const displayedReview = triageFailedWithoutResult ? "Not available" : latestTriage?.requires_human_review ? "Required" : "Not flagged";
   const displayedUrgencyBadge = triageFailedWithoutResult ? <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Not classified</span> : ticket ? <UrgencyBadge priority={ticket.priority} /> : null;
+  const canManageTemplates = currentRole === "owner" || currentRole === "admin";
   const canEdit = latestSuggestion?.status === "suggested" || latestSuggestion?.status === "edited";
   const draftCreated = latestSuggestion?.status === "draft_created" || Boolean(latestSuggestion?.gmail_draft_id);
   const canDraft = latestSuggestion?.status === "approved" && !latestSuggestion.gmail_draft_id;
@@ -737,7 +738,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     <section className="space-y-5">
       <Link href={basePath} className="text-sm font-medium text-slate-600 hover:text-slate-900">Back to queue</Link>
       {message ? <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">{message}</p> : null}
-      {lockWarning ? <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{lockWarning}</p> : null}
+      {lockWarning ? <p className="rounded-lg border border-[#ddd7e6] bg-white/50 p-4 text-sm text-[#746d80]">{lockWarning}</p> : null}
 
       {ticket ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
@@ -860,13 +861,13 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                 <div><dt className="text-slate-500">SLA timer</dt><dd className="mt-1 font-medium">{ticket.sla_status === "paused" ? "Paused" : relativeDue(currentSlaTarget?.value) ?? "Not set"}</dd></div>
               </dl>
               {triageFailedWithoutResult ? (
-                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <div className="mt-4 rounded-md border border-[#ddd7e6] bg-white/50 p-3 text-sm text-[#746d80]">
                   AI triage did not complete. The default urgency/category values are hidden because they are not an AI classification.
                   {ticket.triage_error_message ? <span className="mt-2 block">Reason: {ticket.triage_error_message}</span> : null}
                 </div>
               ) : null}
               {currentTriageChange ? (
-                <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+                <div className="mt-4 rounded-md border border-[#ddd7e6] bg-white/50 p-3 text-sm text-[#655f73]">
                   <p className="font-medium">Regenerated triage changed classification</p>
                   <p className="mt-1 text-xs leading-5">
                     Urgency changed from {currentTriageChange.previousPriority} to {currentTriageChange.newPriority}; category changed from {currentTriageChange.previousCategory} to {currentTriageChange.newCategory}.
@@ -905,7 +906,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                 {routingExecutions.length === 0 ? <p className="text-sm text-slate-500">No routing rules have run on this ticket.</p> : routingExecutions.map((execution) => (
                   <div key={execution.id} className="rounded-md border border-slate-200 p-3 text-sm">
                     <div className="flex items-center justify-between gap-2">
-                      <span className={execution.matched ? "font-medium text-teal-700" : "font-medium text-slate-500"}>{execution.matched ? "Matched" : "Skipped"}</span>
+                      <span className={execution.matched ? "font-medium text-slate-700" : "font-medium text-slate-500"}>{execution.matched ? "Matched" : "Skipped"}</span>
                       <span className="font-mono text-xs text-slate-500">{new Date(execution.created_at).toLocaleString()}</span>
                     </div>
                     <p className="mt-2 text-xs text-slate-500">{Object.keys(execution.actions_applied).length ? JSON.stringify(execution.actions_applied) : "No actions applied"}</p>
@@ -923,7 +924,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                     <span className="font-mono text-xs text-slate-500">v{latestSuggestion.reply_version} / {latestSuggestion.created_by}</span>
                   </div>
                   {draftCreated ? (
-                    <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="font-medium">Gmail draft created</p>
                         {latestSuggestion.gmail_draft_id ? <span className="font-mono text-xs">{latestSuggestion.gmail_draft_id}</span> : null}
@@ -932,7 +933,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                       <a href="https://mail.google.com/mail/u/0/#drafts" target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-medium underline">Open Gmail drafts</a>
                     </div>
                   ) : latestSuggestion.status === "approved" ? (
-                    <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+                    <div className="rounded-md border border-[#ddd7e6] bg-white/50 p-3 text-sm text-[#655f73]">
                       <p className="font-medium">Approved reply ready</p>
                       <p className="mt-1 text-xs leading-5">Create a Gmail draft when you are ready. The draft will stay in Gmail for final review.</p>
                     </div>
@@ -949,8 +950,8 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-mono font-medium text-slate-700">v{version.version}</span>
                               <span className="capitalize text-slate-500">{displayStatus(version.status)}</span>
-                              {version.version === latestSuggestion.reply_version ? <span className="rounded bg-teal-50 px-2 py-0.5 font-medium text-teal-700">Current</span> : null}
-                              {version.version === latestSuggestion.approved_reply_version ? <span className="rounded bg-sky-50 px-2 py-0.5 font-medium text-sky-700">Approved</span> : null}
+                              {version.version === latestSuggestion.reply_version ? <span className="rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700">Current</span> : null}
+                              {version.version === latestSuggestion.approved_reply_version ? <span className="rounded bg-white/50 px-2 py-0.5 font-medium text-[#655f73] ring-1 ring-[#ddd7e6]">Approved</span> : null}
                             </div>
                             <span className="text-slate-500">{formatReplyVersionTime(version.created_at)}</span>
                           </div>
@@ -983,7 +984,7 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                     <div className="sm:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="font-medium text-slate-800">Direct send</p>
-                        <span className={`rounded-md border px-2 py-1 text-xs font-medium ${directSendEnabled ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-500"}`}>
+                        <span className={`rounded-md border px-2 py-1 text-xs font-medium ${directSendEnabled ? "border-[#ddd7e6] bg-white/50 text-[#746d80]" : "border-slate-200 bg-white text-slate-500"}`}>
                           {directSendEnabled ? "Final confirmation required" : "Off"}
                         </span>
                       </div>
@@ -1015,12 +1016,20 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
               </div>
 
               <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
-                <p className="text-sm font-medium text-slate-800">Save current reply as template</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                  <input value={newTemplateName} onChange={(event) => setNewTemplateName(event.target.value)} placeholder="Template name" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                  <input value={newTemplateTags} onChange={(event) => setNewTemplateTags(event.target.value)} placeholder="Tags, comma separated" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                  <Button type="button" variant="outline" onClick={() => void handleCreateTemplate()} disabled={savingTemplate || !newTemplateName.trim() || !replyText.trim()}>{savingTemplate ? "Saving..." : "Save template"}</Button>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">Save current reply as template</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Owners and admins can save approved wording. Agents can insert existing templates while working replies.</p>
+                  </div>
+                  <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-500">{canManageTemplates ? "Can create" : "Insert only"}</span>
                 </div>
+                {canManageTemplates ? (
+                  <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <input value={newTemplateName} onChange={(event) => setNewTemplateName(event.target.value)} placeholder="Template name" className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <input value={newTemplateTags} onChange={(event) => setNewTemplateTags(event.target.value)} placeholder="Tags, comma separated" className="min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                    <Button type="button" variant="outline" className="w-full lg:w-auto" onClick={() => void handleCreateTemplate()} disabled={savingTemplate || !newTemplateName.trim() || !replyText.trim()}>{savingTemplate ? "Saving..." : "Save template"}</Button>
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
@@ -1035,21 +1044,22 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
                 {visibleTemplates.map((template) => (
                   <div key={template.id} className="rounded-md border border-slate-200 p-3 text-sm">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium text-slate-800">{template.name}</p>
-                          <span className="font-mono text-xs text-slate-400">v{template.version}</span>
+                          <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-500">Version {template.version}</span>
                         </div>
                         {template.category_tags.length ? (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {template.category_tags.map((tag) => <span key={tag} className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{tag}</span>)}
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">Tags</span>
+                            {template.category_tags.map((tag) => <span key={tag} className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600">{tag}</span>)}
                           </div>
-                        ) : null}
-                        <p className="mt-2 line-clamp-3 text-slate-500">{template.body}</p>
+                        ) : <p className="mt-2 text-xs text-slate-400">No tags yet</p>}
+                        <p className="mt-3 line-clamp-3 rounded-md border border-slate-100 bg-slate-50/70 p-2 text-slate-500">{template.body}</p>
                       </div>
                       <div className="flex shrink-0 flex-col gap-2">
                         <Button type="button" variant="ghost" onClick={() => void handleInsertTemplate(template.id)}>Insert</Button>
-                        <Button type="button" variant="ghost" onClick={() => void handleArchiveTemplate(template.id)} disabled={archivingTemplateId === template.id}>{archivingTemplateId === template.id ? "Archiving..." : "Archive"}</Button>
+                        {canManageTemplates ? <Button type="button" variant="ghost" onClick={() => void handleArchiveTemplate(template.id)} disabled={archivingTemplateId === template.id}>{archivingTemplateId === template.id ? "Archiving..." : "Archive"}</Button> : null}
                       </div>
                     </div>
                   </div>
@@ -1105,3 +1115,8 @@ export function TicketDetailClient({ ticketId, basePath = "/dashboard/tickets" }
     </section>
   );
 }
+
+
+
+
+

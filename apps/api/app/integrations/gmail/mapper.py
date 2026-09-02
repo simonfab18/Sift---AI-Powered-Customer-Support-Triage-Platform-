@@ -1,5 +1,5 @@
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.utils import parseaddr, parsedate_to_datetime
 from typing import Any
@@ -41,6 +41,7 @@ class NormalizedGmailMessage:
     message_html: str | None
     received_at: datetime
     attachments: list[NormalizedGmailAttachment]
+    label_ids: list[str] = field(default_factory=list)
 
 
 def _headers_by_name(message: dict[str, Any]) -> dict[str, str]:
@@ -151,4 +152,5 @@ def normalize_gmail_message(message: dict[str, Any]) -> NormalizedGmailMessage:
         message_html=message_html,
         received_at=_received_at(headers, message.get("internalDate")),
         attachments=_normalize_attachments(message),
+        label_ids=list(message.get("labelIds", []) or []),
     )

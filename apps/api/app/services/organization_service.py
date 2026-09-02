@@ -39,7 +39,23 @@ def unique_slug(db: Session, name: str) -> str:
     return slug
 
 
+
+def _user_can_create_organization(db: Session, user: AuthenticatedUser) -> bool:
+    memberships = list(
+        db.scalars(
+            select(OrganizationMember).where(
+                OrganizationMember.user_id == user.id,
+                OrganizationMember.status == MemberStatus.ACTIVE.value,
+            )
+        )
+    )
+    if not memberships:
+        return True
+    return any(member.role in {MemberRole.OWNER.value, MemberRole.ADMIN.value} for member in memberships)
+
 def create_organization(db: Session, user: AuthenticatedUser, name: str) -> Organization:
+    if not _user_can_create_organization(db, user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only owners and admins can create organizations")
     organization = Organization(name=name.strip(), slug=unique_slug(db, name))
     db.add(organization)
     db.flush()
@@ -57,7 +73,30 @@ def create_organization(db: Session, user: AuthenticatedUser, name: str) -> Orga
     return organization
 
 
+
+def activate_pending_invites_for_user(db: Session, user: AuthenticatedUser) -> set[str]:
+    if not user.email:
+        return set()
+    email = user.email.strip().lower()
+    pending_members = list(
+        db.scalars(
+            select(OrganizationMember).where(
+                OrganizationMember.email == email,
+                OrganizationMember.status == MemberStatus.INVITED.value,
+            )
+        )
+    )
+    if not pending_members:
+        return set()
+    activated_organization_ids = {member.organization_id for member in pending_members}
+    for member in pending_members:
+        member.user_id = user.id
+        member.status = MemberStatus.ACTIVE.value
+    db.commit()
+    return activated_organization_ids
+
 def list_user_organizations(db: Session, user: AuthenticatedUser) -> list[UserOrganizationRead]:
+    activated_invite_org_ids = activate_pending_invites_for_user(db, user)
     rows = db.execute(
         select(Organization, OrganizationMember)
         .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
@@ -73,6 +112,7 @@ def list_user_organizations(db: Session, user: AuthenticatedUser) -> list[UserOr
             name=organization.name,
             slug=organization.slug,
             role=member.role,
+            joined_via_invite=organization.id in activated_invite_org_ids,
         )
         for organization, member in rows
     ]
@@ -244,7 +284,7 @@ def request_organization_deletion(
     actor: AuthenticatedUser,
     payload: OrganizationDeletionRequestCreate,
 ) -> dict:
-    require_role(db, organization_id, actor, {MemberRole.OWNER})
+    require_role(db, organization_id, actor, {MemberRole.OWNER, MemberRole.ADMIN})
     organization = get_organization(db, organization_id)
     if organization is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
@@ -259,6 +299,17 @@ def request_organization_deletion(
     settings.sync_enabled = False
     settings.auto_triage_enabled = False
     settings.draft_creation_enabled = False
+
+    members = list(
+        db.scalars(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == organization_id,
+                OrganizationMember.status != MemberStatus.DISABLED.value,
+            )
+        )
+    )
+    for member in members:
+        member.status = MemberStatus.DISABLED.value
 
     requested_at = datetime.now(UTC)
     create_audit_log(

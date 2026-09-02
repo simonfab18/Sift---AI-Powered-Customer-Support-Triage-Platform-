@@ -156,3 +156,11 @@ export function updateMemberRole(accessToken: string, organizationId: string, me
     body: JSON.stringify({ role }),
   });
 }
+export function removeMember(accessToken: string, organizationId: string, memberId: string) {
+  return apiFetch<void>(`/v1/orgs/${organizationId}/members/${memberId}`, accessToken, {
+    method: "DELETE",
+  });
+}
+
+
+

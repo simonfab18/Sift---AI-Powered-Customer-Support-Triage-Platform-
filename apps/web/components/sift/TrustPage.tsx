@@ -1,9 +1,10 @@
 import Link from "next/link";
 
 import { MarketingNav } from "@/components/sift/MarketingNav";
-import { SiftLogo } from "@/components/sift/SiftLogo";
+import { MarketingFooter } from "@/components/sift/MarketingPage";
+import { ScrollReveal } from "@/components/sift/ScrollReveal";
 
-type TrustPageKey = "support" | "status" | "privacy" | "terms" | "dataProcessing";
+type TrustPageKey = "support" | "status" | "privacy" | "terms" | "dataProcessing" | "cookies";
 
 type TrustSection = {
   title: string;
@@ -11,33 +12,44 @@ type TrustSection = {
   items?: string[];
 };
 
-const pages: Record<TrustPageKey, { eyebrow: string; title: string; body: string; sections: TrustSection[] }> = {
+const pages: Record<TrustPageKey, { eyebrow: string; title: string; body: string; cta?: string; href?: string; sections: TrustSection[] }> = {
   support: {
     eyebrow: "Support",
-    title: "How Sift support is handled during the free pilot.",
-    body: "This product is currently a free pilot. Support is focused on setup, Gmail sync reliability, safe triage, and deployment health.",
+    title: "Support for the free Gmail-first pilot.",
+    body: "Sift is currently a free pilot, so support is focused on setup, Gmail sync reliability, safe AI triage, and approval-to-draft workflows.",
+    cta: "Ask a question",
+    href: "/contact",
     sections: [
       {
         title: "What to send",
-        body: "Include the workspace name, the connected Gmail inbox, what you were trying to do, and the error message shown in the app.",
+        body: "Include the workspace name, connected Gmail inbox, what you were trying to do, and the exact message shown in the app.",
         items: ["Gmail connection issues", "Import or sync problems", "AI triage quota or classification issues", "Draft approval and Gmail draft creation issues"],
       },
       {
-        title: "Expected response path",
-        body: "Pilot support is handled manually. Critical issues are Gmail sync down, login blocked, data access concerns, or failed approval-to-draft flows.",
-        items: ["Check the Gmail settings health cards", "Confirm Cloud Run API health", "Review recent import job errors", "Escalate with workspace and ticket IDs"],
+        title: "What support covers now",
+        body: "During pilot, support is practical and setup-focused rather than paid SLA support.",
+        items: ["Check Gmail settings health", "Review failed import jobs", "Confirm Cloud Run API health", "Escalate with workspace and ticket IDs"],
+      },
+      {
+        title: "Current pilot expectation",
+        body: "There is no paid subscription or guaranteed response time yet. Critical issues are login blocked, Gmail sync down, data access concerns, or failed approval-to-draft flows.",
       },
     ],
   },
   status: {
     eyebrow: "Status",
-    title: "Current service status and operating dependencies.",
-    body: "Sift does not yet have an automated public status provider. This page documents the current manual status process for the free pilot.",
+    title: "Current status for a free pilot system.",
+    body: "Sift does not yet have an automated public status provider. This page explains the live dependencies and the current manual incident process.",
     sections: [
+      {
+        title: "Pilot status posture",
+        body: "The system is available as a free Gmail-first pilot. Status is monitored through cloud provider health, application checks, Gmail health panels, and user-reported issues.",
+        items: ["No paid SLA yet", "Human-approved replies only", "Gemini free-tier limits can pause AI", "Gmail sync health is visible in settings"],
+      },
       {
         title: "Core services",
         body: "The app depends on Vercel for frontend hosting, Google Cloud Run for the API, Google Pub/Sub and Scheduler for Gmail jobs, Supabase for auth/database, Gmail APIs, and Gemini for AI triage.",
-        items: ["Frontend: Vercel", "Backend: Cloud Run", "Database and auth: Supabase", "Gmail jobs: Pub/Sub and Scheduler", "AI triage: Gemini free-tier capped"],
+        items: ["Frontend: Vercel", "Backend: Cloud Run", "Database and auth: Supabase", "Gmail jobs: Pub/Sub and Scheduler", "AI triage: Gemini capped by quota"],
       },
       {
         title: "Incident handling",
@@ -47,12 +59,12 @@ const pages: Record<TrustPageKey, { eyebrow: string; title: string; body: string
   },
   privacy: {
     eyebrow: "Privacy",
-    title: "Privacy summary for the free pilot.",
+    title: "Privacy summary for support teams testing Sift.",
     body: "Sift processes support data only to provide Gmail import, AI triage, human review, draft creation, audit, and workspace operations.",
     sections: [
       {
         title: "Data processed",
-        body: "The system may process account identity, workspace membership, Gmail message metadata and body content, attachments metadata, generated triage output, reply suggestions, audit events, and operational logs.",
+        body: "The system may process account identity, workspace membership, Gmail message metadata and body content, attachment metadata, generated triage output, reply suggestions, audit events, and operational logs.",
       },
       {
         title: "Controls",
@@ -60,14 +72,14 @@ const pages: Record<TrustPageKey, { eyebrow: string; title: string; body: string
         items: ["Human approval before Gmail draft creation", "Role-based workspace access", "Tenant isolation checks", "Encrypted Gmail OAuth token storage", "Audit history for important actions"],
       },
       {
-        title: "Current pilot note",
+        title: "Pilot note",
         body: "This page is product documentation for the pilot and should be reviewed before any public commercial launch.",
       },
     ],
   },
   terms: {
     eyebrow: "Terms",
-    title: "Free pilot terms direction.",
+    title: "Terms direction for the current free pilot.",
     body: "Sift is currently offered as a free pilot tool. Paid billing, formal subscription terms, and service-level commitments are intentionally deferred.",
     sections: [
       {
@@ -80,7 +92,7 @@ const pages: Record<TrustPageKey, { eyebrow: string; title: string; body: string
         body: "AI triage and reply suggestions can be incomplete or wrong. Agents should review urgency, category, reasoning, and draft text before approval.",
       },
       {
-        title: "Current pilot note",
+        title: "Pilot note",
         body: "This terms page is a product-readiness placeholder and should be replaced by reviewed legal terms before a public launch.",
       },
     ],
@@ -88,7 +100,7 @@ const pages: Record<TrustPageKey, { eyebrow: string; title: string; body: string
   dataProcessing: {
     eyebrow: "Data processing",
     title: "How support data moves through Sift.",
-    body: "This page explains the current data-processing direction for Gmail support triage in staging/pilot environments.",
+    body: "This page explains the current data-processing direction for Gmail support triage in staging and pilot environments.",
     sections: [
       {
         title: "Processing flow",
@@ -105,76 +117,65 @@ const pages: Record<TrustPageKey, { eyebrow: string; title: string; body: string
       },
     ],
   },
+  cookies: {
+    eyebrow: "Cookies",
+    title: "Cookie use for the Sift website and app.",
+    body: "Sift uses only the cookies and browser storage needed for authentication, session continuity, security, and basic product operation during the free pilot.",
+    sections: [
+      {
+        title: "Essential cookies",
+        body: "Authentication and session cookies help keep users signed in and protect account access. These are required for the dashboard and cannot be turned off inside the app.",
+        items: ["Supabase auth session", "Security/session continuity", "Workspace access state"],
+      },
+      {
+        title: "Product preferences",
+        body: "The app may store small local preferences such as selected workspace, saved UI state, and dashboard navigation choices to make the product easier to use.",
+      },
+      {
+        title: "Pilot note",
+        body: "Sift does not currently describe paid advertising or cross-site marketing cookies as part of the pilot posture. This should be reviewed before public launch.",
+      },
+    ],
+  },
 };
-
-const footerLinks = [
-  ["Support", "/support"],
-  ["Status", "/status"],
-  ["Privacy", "/privacy"],
-  ["Terms", "/terms"],
-  ["Data processing", "/data-processing"],
-  ["Security", "/security"],
-];
 
 export function TrustPage({ page }: { page: TrustPageKey }) {
   const data = pages[page];
 
   return (
-    <main className="sift-page">
+    <main className="landing-page trust-detail-page">
+      <ScrollReveal />
       <MarketingNav />
-      <section className="section">
-        <div className="sift-container page-title">
-          <span className="eyebrow">{data.eyebrow}</span>
-          <h1>{data.title}</h1>
-          <p>{data.body}</p>
-          <div className="hero-actions">
-            <Link className="button primary" href="/signup">Start free</Link>
-            <Link className="button secondary" href="/dashboard">Open dashboard</Link>
+      <section className="detail-hero trust-hero">
+        <div className="sift-container detail-hero-grid">
+          <div className="section-copy reveal-up">
+            <span className="landing-eyebrow">{data.eyebrow}</span>
+            <h1>{data.title}</h1>
+            <p>{data.body}</p>
+            <div className="landing-actions">
+              <Link className="landing-button primary" href={data.href ?? "/signup"}>{data.cta ?? "Start free"}</Link>
+              <Link className="landing-button secondary" href="/contact">Ask a question</Link>
+            </div>
+          </div>
+          <div className="trust-summary-card reveal-up">
+            <span>Free pilot</span>
+            <strong>Human approval, Gmail-first scope, and transparent operating limits.</strong>
+            <p>These pages explain the current product posture while Sift is still being improved before a broader launch.</p>
           </div>
         </div>
       </section>
-      <section className="section" style={{ background: "white", borderBlock: "1px solid var(--border)" }}>
-        <div className="sift-container dashboard-grid">
+      <section className="landing-section compact-top">
+        <div className="sift-container trust-card-grid">
           {data.sections.map((section) => (
-            <article key={section.title} className="panel">
+            <article key={section.title} className="detail-panel trust-panel reveal-up">
               <h2>{section.title}</h2>
               <p>{section.body}</p>
-              {section.items ? (
-                <ul style={{ margin: "18px 0 0", paddingLeft: 18, color: "var(--muted)", lineHeight: 1.8 }}>
-                  {section.items.map((item) => <li key={item}>{item}</li>)}
-                </ul>
-              ) : null}
+              {section.items ? <ul>{section.items.map((item) => <li key={item}>{item}</li>)}</ul> : null}
             </article>
           ))}
         </div>
       </section>
-      <footer className="footer">
-        <div className="sift-container footer-grid">
-          <div>
-            <SiftLogo />
-            <p style={{ marginTop: 12 }}>Free pilot documentation for safe Gmail support triage.</p>
-          </div>
-          <div>
-            <strong>Trust</strong>
-            {footerLinks.slice(0, 3).map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
-          </div>
-          <div>
-            <strong>Legal</strong>
-            {footerLinks.slice(3, 5).map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
-          </div>
-          <div>
-            <strong>Product</strong>
-            <Link href="/product">Product</Link>
-            <Link href="/resources">Resources</Link>
-            <Link href="/contact">Contact</Link>
-          </div>
-          <div>
-            <strong>Access</strong>
-            <Link href="/login">Sign in</Link>
-            <Link href="/signup">Start free</Link>
-          </div>
-        </div>
-      </footer>
+      <MarketingFooter />
     </main>
   );
 }

@@ -297,7 +297,7 @@ export function RoutingRulesSettings() {
               <input value={addTag} onChange={(event) => setAddTag(event.target.value)} placeholder="Record tag" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={requireApproval} onChange={(event) => setRequireApproval(event.target.checked)} className="h-4 w-4 rounded border-slate-300" /> Require approval</label>
             </div>
-            {assignableMembers.length === 0 ? <p className="mt-2 text-xs text-amber-700">No active agents/admins found. Add a team member before using automatic assignment.</p> : null}
+            {assignableMembers.length === 0 ? <p className="mt-2 text-xs text-[#746d80]">No active agents/admins found. Add a team member before using automatic assignment.</p> : null}
           </div>
 
           <div className="mt-5 border-t border-slate-200 pt-5">
@@ -312,7 +312,7 @@ export function RoutingRulesSettings() {
             </div>
             <Button type="button" variant="outline" className="mt-3" onClick={() => void handleTestCurrentRule()}>Test rule</Button>
             {testResult ? (
-              <div className={`mt-3 rounded-md border p-3 text-sm ${testResult.matched ? "border-teal-200 bg-teal-50 text-teal-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+              <div className={`mt-3 rounded-md border p-3 text-sm ${testResult.matched ? "border-slate-200 bg-slate-100 text-slate-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
                 <p className="font-medium">{testResult.matched ? "Sample matches this rule" : "Sample does not match"}</p>
                 <p className="mt-1 text-xs leading-5">Matched conditions: {testResult.matched_conditions.length ? testResult.matched_conditions.map(labelize).join(", ") : "none"}</p>
                 <p className="mt-1 text-xs leading-5">Actions: {describeJson(testResult.actions_preview, membersByUserId)}</p>
@@ -336,7 +336,7 @@ export function RoutingRulesSettings() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium text-slate-900">{rule.priority_order}. {rule.name}</p>
-                      <span className={`rounded-md px-2 py-1 text-xs ${rule.is_active ? "bg-teal-50 text-teal-700" : "bg-slate-100 text-slate-500"}`}>{rule.is_active ? "Active" : "Paused"}</span>
+                      <span className={`rounded-md px-2 py-1 text-xs ${rule.is_active ? "bg-slate-100 text-slate-700" : "bg-slate-100 text-slate-500"}`}>{rule.is_active ? "Active" : "Paused"}</span>
                     </div>
                     <p className="mt-2 text-sm text-slate-600">When {describeJson(rule.conditions, membersByUserId)}</p>
                     <p className="mt-1 text-sm text-slate-500">Then {describeJson(rule.actions, membersByUserId)}</p>
@@ -355,3 +355,5 @@ export function RoutingRulesSettings() {
     </section>
   );
 }
+
+

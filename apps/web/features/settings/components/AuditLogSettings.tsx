@@ -131,3 +131,4 @@ export function AuditLogSettings() {
     </div>
   );
 }
+

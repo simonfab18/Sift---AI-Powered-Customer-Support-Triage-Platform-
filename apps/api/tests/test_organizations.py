@@ -201,12 +201,19 @@ def test_owner_deletion_request_pauses_workspace_and_audits(client: TestClient, 
     with client.session_factory() as db:
         settings = db.scalar(select(WorkspaceSettings).where(WorkspaceSettings.organization_id == organization["id"]))
         audit_log = db.scalar(select(AuditLog).where(AuditLog.action == "organization.deletion_requested"))
+        memberships = list(db.scalars(select(OrganizationMember).where(OrganizationMember.organization_id == organization["id"])))
     assert settings is not None
     assert settings.sync_enabled is False
     assert settings.auto_triage_enabled is False
     assert settings.draft_creation_enabled is False
     assert audit_log is not None
     assert audit_log.audit_metadata["reason"] == "no longer needed"
+    assert memberships
+    assert {member.status for member in memberships} == {MemberStatus.DISABLED.value}
+
+    me_response = client.get("/v1/me")
+    assert me_response.status_code == 200
+    assert me_response.json()["organizations"] == []
 
 def test_owner_can_mark_gmail_connection_as_google_group(client: TestClient, create_org) -> None:
     organization = create_org()
@@ -349,3 +356,50 @@ def test_individual_gmail_source_clears_shared_address(client: TestClient, creat
     assert response.status_code == 200
     assert response.json()["inbox_type"] == "individual"
     assert response.json()["shared_address"] is None
+
+def test_agent_member_cannot_create_additional_organization(client: TestClient, create_org) -> None:
+    organization = create_org()
+    with client.session_factory() as db:
+        db.add(
+            OrganizationMember(
+                organization_id=organization["id"],
+                user_id="agent-user",
+                email="agent@example.com",
+                role=MemberRole.AGENT.value,
+                status=MemberStatus.ACTIVE.value,
+            )
+        )
+        db.commit()
+
+    client.current_user.update({"id": "agent-user", "email": "agent@example.com"})
+
+    response = client.post("/v1/organizations", json={"name": "Agent Workspace"})
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Only owners and admins can create organizations"
+
+
+def test_admin_can_request_organization_deletion(client: TestClient, create_org) -> None:
+    organization = create_org()
+    with client.session_factory() as db:
+        db.add(WorkspaceSettings(organization_id=organization["id"], sync_enabled=True, auto_triage_enabled=True, draft_creation_enabled=True))
+        db.add(
+            OrganizationMember(
+                organization_id=organization["id"],
+                user_id="admin-user",
+                email="admin@example.com",
+                role=MemberRole.ADMIN.value,
+                status=MemberStatus.ACTIVE.value,
+            )
+        )
+        db.commit()
+
+    client.current_user.update({"id": "admin-user", "email": "admin@example.com"})
+
+    response = client.post(
+        f"/v1/organizations/{organization['id']}/deletion-request",
+        json={"confirm": True, "reason": "Remove requested from organization manager"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "requested"

@@ -5,12 +5,12 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import AuthenticatedUser
 from app.models.customer import Customer
 from app.models.gmail_connection import GmailConnection
-from app.models.member import MemberStatus, OrganizationMember
+from app.models.member import MemberRole, MemberStatus, OrganizationMember
 from app.models.reply_suggestion import ReplySuggestion
 from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketStatus
 from app.models.ticket_event import TicketEvent
 from app.schemas.ticket import TicketAssign, TicketCreate, TicketListItem, TicketUpdate
-from app.services.rbac_service import require_membership
+from app.services.rbac_service import require_membership, require_role
 from app.services.routing_rule_service import apply_routing_rules
 from app.services.sla_service import PAUSED_STATUSES, SLA_PAUSED, initialize_ticket_sla, refresh_ticket_sla_status
 from app.services.workspace_settings_service import get_or_create_workspace_settings
@@ -266,6 +266,7 @@ def assign_ticket(
     actor: AuthenticatedUser,
     payload: TicketAssign,
 ) -> Ticket:
+    require_role(db, organization_id, actor, {MemberRole.OWNER, MemberRole.ADMIN})
     ticket = get_ticket_or_404(db, organization_id, ticket_id, actor)
     assigned_to_user_id = payload.assigned_to_user_id
 
